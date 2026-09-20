@@ -1,0 +1,195 @@
+{
+  "name": "pi-vscode",
+  "displayName": "pi for VS Code",
+  "description": "pi coding agent inside VS Code — a Codex / Claude Code style chat sidebar with streaming replies, tool cards, inline diffs and session history.",
+  "version": "0.1.0",
+  "publisher": "pi-local",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "pi",
+    "agent",
+    "coding agent",
+    "ai",
+    "chat"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:pi.newSession",
+    "onCommand:pi.focusChat"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pi",
+          "title": "pi",
+          "icon": "media/pi.svg"
+        }
+      ]
+    },
+    "views": {
+      "pi": [
+        {
+          "id": "pi.chat",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "pi.newSession",
+        "title": "New Session",
+        "category": "pi",
+        "icon": "$(add)"
+      },
+      {
+        "command": "pi.focusChat",
+        "title": "Focus Chat",
+        "category": "pi",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "pi.abort",
+        "title": "Stop Current Run",
+        "category": "pi",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "pi.addSelectionToChat",
+        "title": "Add Selection to pi",
+        "category": "pi"
+      },
+      {
+        "command": "pi.addFileToChat",
+        "title": "Add File to pi",
+        "category": "pi"
+      },
+      {
+        "command": "pi.restartEngine",
+        "title": "Restart Engine",
+        "category": "pi"
+      },
+      {
+        "command": "pi.showLogs",
+        "title": "Show Logs",
+        "category": "pi"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "pi.focusChat",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
+      },
+      {
+        "command": "pi.newSession",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pi.newSession",
+          "when": "view == pi.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pi.restartEngine",
+          "when": "view == pi.chat",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "pi.addSelectionToChat",
+          "when": "editorHasSelection",
+          "group": "pi@1"
+        },
+        {
+          "command": "pi.addFileToChat",
+          "group": "pi@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "pi",
+      "properties": {
+        "pi.executablePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `pi` CLI entry. Leave empty to auto-detect: the extension first looks for a bundled `@earendil-works/pi-coding-agent`, then the global npm install, then `pi` on `PATH`."
+        },
+        "pi.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Extra arguments passed to `pi --mode rpc` (for example `--no-extensions`)."
+        },
+        "pi.tools": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Comma-separated allowlist of tools the agent may use (`--tools`). Empty means pi's default."
+        },
+        "pi.excludeTools": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Comma-separated denylist of tools the agent may not use (`--exclude-tools`)."
+        },
+        "pi.approveProjectResources": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Trust project-local resources (`.pi/*`, project skills, context files) without asking, equivalent to `pi --approve`."
+        },
+        "pi.showThinking": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Render the model's thinking blocks in the chat."
+        },
+        "pi.engineIdleTimeoutMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "markdownDescription": "Recycle an idle engine process after this many minutes. `0` keeps it alive."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "smoke": "node scripts/engine-smoke.mjs",
+    "smoke:extension": "node scripts/extension-smoke.mjs",
+    "package": "npm run build && npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/vscode": "1.90.0",
+    "esbuild": "0.25.5",
+    "highlight.js": "11.11.1",
+    "marked": "15.0.12",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "5.9.3"
+  },
+  "allowScripts": {
+    "esbuild@0.25.5": true
+  }
+}
