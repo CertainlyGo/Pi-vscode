@@ -1,9 +1,9 @@
-name: Build VS Code Extension
+name: Build pi for VS Code Extension
 
 on:
   push:
-    branches: [main]          # 仅在 main 分支有推送（即合并）时触发
-  workflow_dispatch:          # 也允许手动触发
+    branches: [main]          # main 分支合并（推送）时触发
+  workflow_dispatch:          # 允许手动触发
 
 jobs:
   build:
@@ -16,20 +16,26 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'    # 使用 LTS 版本，可根据项目调整
+          node-version: '22.x'    # 满足 README 中 Node >= 22.19 的要求
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci               # 确保 package-lock.json 存在，否则请改用 npm install
 
-      - name: Compile
-        run: npm run compile   # 若编译脚本名称不同，请自行替换
+      - name: Typecheck
+        run: npm run typecheck    # 可选：执行 tsc --noEmit 校验类型
+
+      - name: Run Tests
+        run: npm test             # 可选：执行 8 个用例的单元测试
+
+      - name: Build Extension
+        run: npm run build        # 对应 README 中的 esbuild 打包 dist/extension.js 和 dist/webview.js
 
       - name: Package VSIX
-        run: npx @vscode/vsce package --no-dependencies
+        run: npm run package      # 对应 README 中的打包命令，产出 pi-vscode-x.x.x.vsix
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vsix-package
+          name: pi-vscode-vsix
           path: "*.vsix"
