@@ -7,7 +7,9 @@ import { Composer } from "./components/Composer";
 import { DialogHost } from "./components/DialogHost";
 import { Icon } from "./components/Icons";
 import { MessageItem } from "./components/MessageItem";
+import { OAuthDialog } from "./components/OAuthDialog";
 import { SessionPicker } from "./components/Pickers";
+import { ProvidersSheet } from "./components/ProvidersSheet";
 import { Toasts } from "./components/Toasts";
 import { ToolCard } from "./components/ToolCard";
 
@@ -17,7 +19,20 @@ export interface AppProps {
 
 export function App({ store }: AppProps): JSX.Element {
   const state = useSyncExternalStore(store.subscribe, store.getState);
-  const { meta, items, dialog, files, commands, toasts } = state;
+  const {
+    meta,
+    items,
+    dialog,
+    files,
+    commands,
+    toasts,
+    providers,
+    oauthAvailable,
+    providersOpen,
+    providerStatus,
+    oauthPrompt,
+    oauthMessage,
+  } = state;
 
   const streamRef = useRef<HTMLDivElement | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -64,6 +79,10 @@ export function App({ store }: AppProps): JSX.Element {
     [],
   );
   const onSetThinking = useCallback((level: string) => post({ type: "setThinking", level }), []);
+  const onManageProviders = useCallback(() => {
+    post({ type: "requestProviders" });
+    store.setProvidersOpen(true);
+  }, [store]);
 
   return (
     <div className="app">
@@ -83,6 +102,14 @@ export function App({ store }: AppProps): JSX.Element {
         <div className="header-right">
           <span className={`engine-dot ${meta.engine}`} title={statusLabel} />
           <span className="engine-label">{statusLabel}</span>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Providers & models"
+            onClick={onManageProviders}
+          >
+            <Icon name="key" size={14} />
+          </button>
           <button
             type="button"
             className="icon-btn"
@@ -188,9 +215,30 @@ export function App({ store }: AppProps): JSX.Element {
         onAbort={onAbort}
         onSetModel={onSetModel}
         onSetThinking={onSetThinking}
+        onManageProviders={onManageProviders}
       />
 
       <DialogHost dialog={dialog} onRespond={(id, response) => post({ type: "dialogResponse", id, response })} />
+      {providersOpen && (
+        <ProvidersSheet
+          providers={providers}
+          oauthAvailable={oauthAvailable}
+          status={providerStatus}
+          oauthMessage={oauthMessage}
+          onClose={() => store.setProvidersOpen(false)}
+          onAddApiKey={(provider, key, baseUrl) =>
+            post({ type: "addApiKey", provider, key, ...(baseUrl !== undefined ? { baseUrl } : {}) })
+          }
+          onAddCustom={(input) => post({ type: "addCustomProvider", ...input })}
+          onRemove={(provider) => post({ type: "removeCredential", provider })}
+          onOAuthLogin={(provider) => post({ type: "oauthLogin", provider })}
+          onOAuthCancel={() => post({ type: "oauthCancel" })}
+        />
+      )}
+      <OAuthDialog
+        prompt={oauthPrompt}
+        onRespond={(value) => post({ type: "oauthPromptResponse", value })}
+      />
       <Toasts toasts={toasts} onDismiss={(id) => store.dismissToast(id)} />
     </div>
   );

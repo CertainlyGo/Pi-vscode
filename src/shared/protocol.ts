@@ -181,6 +181,35 @@ export interface SlashCommand {
   readonly source?: string;
 }
 
+export interface ProviderInfo {
+  readonly id: string;
+  /** `api_key` | `bearer_token` | `oauth` | `env` | `endpoint`. */
+  readonly type: string;
+  readonly masked: string;
+  readonly source: "auth" | "env" | "endpoint";
+  readonly baseUrl?: string;
+  readonly api?: string;
+  readonly models: readonly string[];
+}
+
+export interface OAuthPromptView {
+  readonly type: "text" | "secret" | "select" | "manual_code";
+  readonly message: string;
+  readonly placeholder?: string;
+  readonly options?: readonly { id: string; label: string; description?: string }[];
+}
+
+export type OAuthEventView =
+  | { readonly kind: "info"; readonly message: string }
+  | { readonly kind: "auth_url"; readonly url: string; readonly instructions?: string }
+  | {
+      readonly kind: "device_code";
+      readonly userCode: string;
+      readonly verificationUri: string;
+      readonly expiresInSeconds?: number;
+    }
+  | { readonly kind: "progress"; readonly message: string };
+
 export interface DialogRequest {
   readonly id: string;
   readonly method: "select" | "confirm" | "input" | "editor";
@@ -218,8 +247,17 @@ export type HostMessage =
   | { readonly type: "notice"; readonly level: NoteLevel; readonly message: string }
   | { readonly type: "files"; readonly files: readonly string[] }
   | { readonly type: "commands"; readonly commands: readonly SlashCommand[] }
+  | {
+      readonly type: "providers";
+      readonly providers: readonly ProviderInfo[];
+      readonly oauthAvailable: boolean;
+    }
+  | { readonly type: "providerStatus"; readonly ok: boolean; readonly message: string; readonly busy: boolean }
+  | { readonly type: "oauthPrompt"; readonly prompt: OAuthPromptView | null }
+  | { readonly type: "oauthEvent"; readonly event: OAuthEventView }
   | { readonly type: "attach"; readonly attachment: Attachment }
   | { readonly type: "setDraft"; readonly text: string }
+  | { readonly type: "openProviders" }
   | { readonly type: "insert"; readonly text: string }
   | { readonly type: "focus" };
 
@@ -247,6 +285,25 @@ export type WebviewMessage =
   | { readonly type: "setThinking"; readonly level: string }
   | { readonly type: "refresh" }
   | { readonly type: "requestFiles" }
+  | { readonly type: "requestProviders" }
+  | {
+      readonly type: "addApiKey";
+      readonly provider: string;
+      readonly key: string;
+      readonly baseUrl?: string;
+    }
+  | {
+      readonly type: "addCustomProvider";
+      readonly id: string;
+      readonly api: string;
+      readonly baseUrl: string;
+      readonly key: string;
+      readonly models: readonly string[];
+    }
+  | { readonly type: "removeCredential"; readonly provider: string }
+  | { readonly type: "oauthLogin"; readonly provider: string }
+  | { readonly type: "oauthCancel" }
+  | { readonly type: "oauthPromptResponse"; readonly value: string | null }
   | {
       readonly type: "dialogResponse";
       readonly id: string;

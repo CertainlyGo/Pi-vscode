@@ -27,9 +27,10 @@ export interface ModelPickerProps {
   readonly meta: Meta;
   readonly onSelectModel: (provider: string, modelId: string) => void;
   readonly onSelectThinking: (level: string) => void;
+  readonly onManageProviders: () => void;
 }
 
-export function ModelPicker({ meta, onSelectModel, onSelectThinking }: ModelPickerProps): JSX.Element {
+export function ModelPicker({ meta, onSelectModel, onSelectThinking, onManageProviders }: ModelPickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, () => setOpen(false));
 
@@ -40,7 +41,7 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking }: ModelPick
     grouped.set(model.provider, list);
   }
 
-  const label = meta.model?.name ?? "Select model";
+  const label = meta.model?.name ?? (meta.models.length > 0 ? "Select model" : "No models");
 
   return (
     <div className="picker" ref={ref}>
@@ -52,7 +53,11 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking }: ModelPick
       {open && (
         <div className="popover model-popover">
           <div className="popover-head">Model</div>
-          {meta.models.length === 0 && <div className="popover-empty">No models available.</div>}
+          {meta.models.length === 0 && (
+            <div className="popover-empty">
+              No models available. Add a credential or a custom model source first.
+            </div>
+          )}
           {[...grouped].map(([provider, models]) => (
             <div key={provider} className="model-group">
               <div className="model-provider">{provider}</div>
@@ -94,6 +99,19 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking }: ModelPick
               </div>
             </>
           )}
+
+          <div className="popover-foot">
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => {
+                setOpen(false);
+                onManageProviders();
+              }}
+            >
+              <Icon name="key" size={13} /> Manage providers &amp; models
+            </button>
+          </div>
         </div>
       )}
     </div>

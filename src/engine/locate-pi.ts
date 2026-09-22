@@ -19,6 +19,8 @@ export interface PiLaunch {
   readonly describe: string;
   /** Resolved pi version, when we can read it. */
   readonly version?: string;
+  /** Root of the resolved pi package, used to locate the pi-ai OAuth loaders. */
+  readonly packageDir?: string;
   readonly source: "setting" | "package" | "path";
 }
 
@@ -56,6 +58,7 @@ export async function locatePi(options: LocatePiOptions): Promise<PiLaunch> {
       env: node.env,
       describe: `${node.command} ${packageCli.cliPath}`,
       ...(packageCli.version !== undefined ? { version: packageCli.version } : {}),
+      packageDir: packageCli.packageDir,
       source: "package",
     };
   }
@@ -94,12 +97,14 @@ async function fromSetting(raw: string, workspace: string): Promise<PiLaunch | u
 
   if (/\.(js|mjs|cjs)$/i.test(cliPath)) {
     const node = await resolveNodeBinary();
+    const packageDir = dirname(dirname(dirname(cliPath)));
     return {
       command: node.command,
       args: [cliPath],
       env: node.env,
       describe: `${node.command} ${cliPath}`,
-      ...(readVersion(dirname(dirname(dirname(cliPath)))) ?? {}),
+      packageDir,
+      ...(readVersion(packageDir) ?? {}),
       source: "setting",
     };
   }
@@ -109,6 +114,7 @@ async function fromSetting(raw: string, workspace: string): Promise<PiLaunch | u
 
 interface PackageCli {
   readonly cliPath: string;
+  readonly packageDir: string;
   readonly version?: string;
 }
 
@@ -125,7 +131,7 @@ async function findPackageCli(extensionPath?: string): Promise<PackageCli | unde
     const pkgDir = join(root, ...PACKAGE_NAME.split("/"));
     const cliPath = join(pkgDir, CLI_RELATIVE);
     if (existsSync(cliPath)) {
-      return { cliPath, ...(readVersion(pkgDir) ?? {}) };
+      return { cliPath, packageDir: pkgDir, ...(readVersion(pkgDir) ?? {}) };
     }
   }
   return undefined;

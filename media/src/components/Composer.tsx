@@ -14,6 +14,7 @@ export interface ComposerProps {
   readonly onAbort: () => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
+  readonly onManageProviders: () => void;
 }
 
 interface Suggestion {
@@ -227,7 +228,12 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
 
         <div className="composer-foot">
           <div className="composer-foot-left">
-            <ModelPicker meta={meta} onSelectModel={props.onSetModel} onSelectThinking={props.onSetThinking} />
+            <ModelPicker
+              meta={meta}
+              onSelectModel={props.onSetModel}
+              onSelectThinking={props.onSetThinking}
+              onManageProviders={props.onManageProviders}
+            />
             {stats !== null && <span className="stats">{stats}</span>}
           </div>
           <div className="composer-foot-right">

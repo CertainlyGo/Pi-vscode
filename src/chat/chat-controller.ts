@@ -11,11 +11,14 @@ import { isDialogUiMethod } from "../engine/rpc-peer";
 import type { ExtensionUiRequest } from "../engine/rpc-peer";
 import { getAgentDir, deleteSession, listSessions } from "../sessions/session-store";
 import { needsTrust, readTrustDecision, writeTrustDecision } from "../sessions/trust";
+import { ProviderService } from "../providers/provider-service";
+import type { OAuthProviderId } from "../providers/oauth";
 import type {
   Attachment,
   DialogOption,
   DialogRequest,
   NoteLevel,
+  OAuthPromptView,
   SlashCommand,
   WebviewMessage,
 } from "../shared/protocol";
@@ -44,6 +47,7 @@ export class ChatController implements vscode.Disposable {
   readonly #model: ChatModel;
   readonly #registry: EngineRegistry;
   readonly #output: vscode.OutputChannel;
+  readonly #providers: ProviderService;
   readonly #disposables: vscode.Disposable[] = [];
 
   #activeWorkspace: string | undefined;
@@ -55,6 +59,8 @@ export class ChatController implements vscode.Disposable {
   #trustDecided = true;
   #dialogQueue: ExtensionUiRequest[] = [];
   #activeDialog: string | undefined;
+  #oauthAbort: AbortController | undefined;
+  #oauthPromptResolve: ((value: string | null) => void) | undefined;
   #disposed = false;
 
   constructor(options: ChatControllerOptions) {
@@ -62,6 +68,12 @@ export class ChatController implements vscode.Disposable {
     this.#view = options.view;
     this.#diff = options.diff;
     this.#output = vscode.window.createOutputChannel("pi");
+    this.#providers = new ProviderService({
+      getAgentDir: () => getAgentDir(),
+      getLaunch: () => this.#launch,
+      openExternal: (url) => void vscode.env.openExternal(vscode.Uri.parse(url)),
+      log: (message) => this.#log(message),
+    });
     this.#model = new ChatModel({ emit: (message) => this.#view.post(message) });
 
     this.#registry = new EngineRegistry({
@@ -106,11 +118,19 @@ export class ChatController implements vscode.Disposable {
     await this.ensureEngine();
     void this.#publishFiles();
     void this.#refreshCommands();
+    void this.#publishProviders();
   }
 
   /** Command-palette entry points. */
   async newSession(): Promise<void> {
     await this.#dispatch({ type: "newSession" });
+  }
+
+  async openProviders(): Promise<void> {
+    await this.#ensureLaunch();
+    await this.#view.reveal();
+    this.#view.post({ type: "openProviders" });
+    await this.#publishProviders();
   }
 
   async abort(): Promise<void> {
@@ -210,6 +230,28 @@ export class ChatController implements vscode.Disposable {
         break;
       case "requestFiles":
         await this.#publishFiles();
+        break;
+      case "requestProviders":
+        await this.#ensureLaunch();
+        await this.#publishProviders();
+        break;
+      case "addApiKey":
+        await this.#addApiKey(message.provider, message.key, message.baseUrl);
+        break;
+      case "addCustomProvider":
+        await this.#addCustomProvider(message);
+        break;
+      case "removeCredential":
+        await this.#removeCredential(message.provider);
+        break;
+      case "oauthLogin":
+        await this.#oauthLogin(message.provider);
+        break;
+      case "oauthCancel":
+        this.#cancelOAuth();
+        break;
+      case "oauthPromptResponse":
+        this.#answerOAuthPrompt(message.value);
         break;
       case "dialogResponse":
         this.#respondDialog(message.id, message.response);
@@ -590,6 +632,149 @@ export class ChatController implements vscode.Disposable {
     } catch (error) {
       return { ...attachment, text: `(could not read file: ${describeError(error)})` };
     }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Providers & model sources                                           */
+  /* ------------------------------------------------------------------ */
+
+  async #publishProviders(): Promise<void> {
+    try {
+      const providers = await this.#providers.list();
+      this.#view.post({
+        type: "providers",
+        providers,
+        oauthAvailable: this.#providers.oauthAvailable,
+      });
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  /** Locate pi even before an engine exists, so credentials can be validated. */
+  async #ensureLaunch(): Promise<void> {
+    if (this.#launch !== undefined) return;
+    const workspace = this.#activeWorkspace ?? this.#workspaceFolder();
+    if (workspace === undefined) return;
+    try {
+      this.#launch = await locatePi({
+        executablePath: this.#config().get<string>("executablePath", ""),
+        workspace,
+        extensionPath: this.#context.extensionPath,
+      });
+    } catch (error) {
+      this.#log(`could not locate pi for provider checks: ${describeError(error)}`);
+    }
+  }
+
+  async #addApiKey(provider: string, key: string, baseUrl?: string): Promise<void> {
+    this.#view.post({ type: "providerStatus", ok: true, message: `Saving ${provider}…`, busy: true });
+    await this.#ensureLaunch();
+    try {
+      const result = await this.#providers.addApiKey(provider, key, baseUrl);
+      this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      await this.#afterProviderChange();
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  async #addCustomProvider(message: {
+    readonly id: string;
+    readonly api: string;
+    readonly baseUrl: string;
+    readonly key: string;
+    readonly models: readonly string[];
+  }): Promise<void> {
+    this.#view.post({ type: "providerStatus", ok: true, message: `Saving ${message.id}…`, busy: true });
+    await this.#ensureLaunch();
+    try {
+      const result = await this.#providers.addCustomProvider({
+        id: message.id,
+        api: message.api as Parameters<ProviderService["addCustomProvider"]>[0]["api"],
+        baseUrl: message.baseUrl,
+        key: message.key,
+        models: message.models,
+      });
+      this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      await this.#afterProviderChange();
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  async #removeCredential(provider: string): Promise<void> {
+    try {
+      const result = await this.#providers.remove(provider);
+      this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      await this.#afterProviderChange();
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  /** Restart the engine so it picks up new credentials/models, then refresh. */
+  async #afterProviderChange(): Promise<void> {
+    await this.#publishProviders();
+    if (this.#activeWorkspace !== undefined) {
+      await this.#restartEngine();
+      await this.#refreshModels();
+      await this.#refreshState();
+    }
+  }
+
+  async #oauthLogin(provider: string): Promise<void> {
+    if (this.#oauthAbort !== undefined) return;
+    await this.#ensureLaunch();
+    const controller = new AbortController();
+    this.#oauthAbort = controller;
+    this.#view.post({ type: "providerStatus", ok: true, message: `Starting ${provider} sign-in…`, busy: true });
+    try {
+      const result = await this.#providers.login(
+        provider as OAuthProviderId,
+        {
+          prompt: (view) => this.#askOAuthPrompt(view),
+          event: (event) => {
+            if (event.kind === "auth_url") this.#providers.openExternal(event.url);
+            else if (event.kind === "device_code") this.#providers.openExternal(event.verificationUri);
+            this.#view.post({ type: "oauthEvent", event });
+          },
+        },
+        controller.signal,
+      );
+      this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      await this.#afterProviderChange();
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    } finally {
+      this.#oauthAbort = undefined;
+      this.#oauthPromptResolve = undefined;
+      this.#view.post({ type: "oauthPrompt", prompt: null });
+    }
+  }
+
+  #askOAuthPrompt(view: OAuthPromptView): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      this.#oauthPromptResolve = (value) => {
+        if (value === null) reject(new Error("Sign-in cancelled."));
+        else resolve(value);
+      };
+      this.#view.post({ type: "oauthPrompt", prompt: view });
+    });
+  }
+
+  #answerOAuthPrompt(value: string | null): void {
+    const resolve = this.#oauthPromptResolve;
+    this.#oauthPromptResolve = undefined;
+    this.#view.post({ type: "oauthPrompt", prompt: null });
+    resolve?.(value);
+  }
+
+  #cancelOAuth(): void {
+    this.#oauthAbort?.abort();
+    this.#answerOAuthPrompt(null);
+    this.#oauthAbort = undefined;
+    this.#view.post({ type: "providerStatus", ok: false, message: "Sign-in cancelled.", busy: false });
   }
 
   /* ------------------------------------------------------------------ */

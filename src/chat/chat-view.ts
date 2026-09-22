@@ -70,12 +70,19 @@ export class ChatView implements vscode.WebviewViewProvider {
     void view.webview.postMessage(message);
   }
 
+  /** Reveal the chat: focus the secondary sidebar, then the pi view. */
   async reveal(): Promise<void> {
-    if (this.#view !== undefined) {
-      this.#view.show?.(true);
-      return;
+    try {
+      await vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
+    } catch {
+      // Older builds may not have this command; focusing the view still works.
     }
-    await vscode.commands.executeCommand(`${ChatView.viewType}.focus`);
+    try {
+      await vscode.commands.executeCommand(`${ChatView.viewType}.focus`);
+    } catch {
+      // The view may not be registered yet.
+    }
+    this.#view?.show?.(true);
   }
 
   #html(webview: vscode.Webview): string {

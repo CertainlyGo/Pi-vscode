@@ -33,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("pi.focusChat", async () => {
       await view.reveal();
     }),
+    vscode.commands.registerCommand("pi.openProviders", () => controller.openProviders()),
     vscode.commands.registerCommand("pi.abort", () => controller.abort()),
     vscode.commands.registerCommand("pi.restartEngine", () => controller.restart()),
     vscode.commands.registerCommand("pi.showLogs", () => controller.showLogs()),

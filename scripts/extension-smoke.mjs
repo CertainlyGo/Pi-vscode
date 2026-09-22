@@ -52,6 +52,7 @@ const vscodeMock = {
   Uri: {
     file: (fsPath) => ({ scheme: "file", fsPath, path: fsPath, toString: () => fsPath }),
     from: (parts) => ({ ...parts, fsPath: parts.path ?? "", toString: () => parts.path ?? "" }),
+    parse: (value) => ({ scheme: "https", path: value, fsPath: value, toString: () => value }),
     joinPath: (base, ...segments) => ({
       scheme: base.scheme ?? "file",
       path: [base.path ?? "", ...segments].join("/"),
@@ -79,6 +80,9 @@ const vscodeMock = {
     },
     showInformationMessage: async () => undefined,
     showTextDocument: async () => ({}),
+  },
+  env: {
+    openExternal: async () => true,
   },
   commands: {
     registerCommand: (id, callback) => {
@@ -111,6 +115,7 @@ assert.ok(viewProvider !== undefined, "webview view provider was registered");
 const expectedCommands = [
   "pi.newSession",
   "pi.focusChat",
+  "pi.openProviders",
   "pi.abort",
   "pi.restartEngine",
   "pi.showLogs",

@@ -1,6 +1,6 @@
 # pi for VS Code
 
-把 [pi](https://github.com/earendil-works/pi) coding agent 搬进 VS Code 侧边栏的图形前端，交互风格对齐 **Codex** 与 **Claude Code**：一条流式对话、工具卡片、内联 diff、模型/思考等级、会话历史与分支，全程不离开编辑器。
+把 [pi](https://github.com/earendil-works/pi) coding agent 搬进 VS Code **右侧边栏**的图形前端，交互风格对齐 **Codex** 与 **Claude Code**：编辑器右上角一个按钮打开，一条流式对话、工具卡片、内联 diff、模型/思考等级、供应商与模型源管理、会话历史与分支，全程不离开编辑器。
 
 引擎跑的是 pi 本体（`pi --mode rpc` 子进程），本扩展**只做前端**，不重新实现 agent 循环。
 
@@ -32,6 +32,7 @@
 - **编辑器命令**：右键「Add Selection to pi」「Add File to pi」，或快捷键 `Ctrl+Alt+P` 聚焦对话、`Ctrl+Alt+N` 新建会话。
 - **会话管理**：历史列表（首条提问自动命名）、切换、重命名、删除、从任意历史用户消息「Branch from here」（pi 的 fork 语义）。
 - **模型与思考**：按 provider 分组的模型选择器 + 思考等级切换，来自 pi 自己的模型清单。
+- **供应商与模型源管理**：内置面板可直接增删 API Key（含自定义网关 baseUrl 覆盖）、新建 OpenAI/Anthropic/Google 兼容的自定义模型源（provider id + api + baseUrl + 模型列表），以及复用 pi 自身 PKCE 流程的订阅登录（Codex / Claude Pro·Max / Copilot / Grok / OpenRouter / Kimi / Meta / Radius）。每次保存都跑 `pi auth check` 验证，并自动重启引擎刷新模型列表。
 - **统计**：token、上下文占用、费用实时显示（`get_session_stats`）。
 - **扩展 UI 协议**：pi 扩展的 `select / confirm / input / editor` 对话框与 `notify` 通知在 webview 内渲染。
 - **信任门**：检测到 `.pi/*`、项目 skills 等需要信任的资源时先询问，决定写回 pi 自己的 `trust.json`，与 TUI 共享。
@@ -60,9 +61,10 @@ code --install-extension pi-vscode-0.1.0.vsix
 ## 使用
 
 1. 打开一个文件夹作为工作区。
-2. 点活动栏的 **π** 图标（或 `Ctrl+Alt+P`）。
+2. 点编辑器右上角的 **π** 按钮（或 `Ctrl+Alt+P`）在右侧边栏打开对话；也可以从命令面板执行 `pi: Open pi Chat`。
 3. 首次若目录含项目级资源，先决定是否信任。
-4. 直接描述任务；`@` 引文件、`/` 用命令。
+4. 需要凭据时点 composer 左下角模型胶囊 →「Manage providers & models」，或标题栏的钥匙按钮：填 API Key、加自定义模型源、或走订阅登录。
+5. 直接描述任务；`@` 引文件、`/` 用命令。
 
 ## 设置
 
@@ -84,7 +86,7 @@ code --install-extension pi-vscode-0.1.0.vsix
 | 监督 | `EngineInstance` 状态机（idle→starting→ready→stopping→stopped / crashed），每个工作区一个，空闲回收；`RpcPeer` 按 `id` 关联响应并路由事件。 |
 | 状态 | `ChatModel` 消费 pi 事件流，产出有序 `ChatItem[]` + `Meta`；granular 消息（`item` / `delta` / `meta`）推给 webview，重载时用 `state` 全量恢复。 |
 | 呈现 | React webview（侧边栏 `pi.chat`），纯渲染 + 用户意图回传；无 Node 能力，CSP 收紧。 |
-| 管理面 | 会话列表直接读 `~/.pi/agent/sessions/<safePath>/*.jsonl`；信任决定读写 pi 的 `trust.json`；其余全部走 RPC。 |
+| 管理面 | 会话列表直接读 `~/.pi/agent/sessions/<safePath>/*.jsonl`；信任决定读写 pi 的 `trust.json`；凭据与模型源读写 pi 的 `auth.json` / `models.json`（严格按文档 schema，写后即 `pi auth check` 验证）；OAuth 走 pi-ai 的 PKCE loader；其余全部走 RPC。 |
 
 代码地图：
 
@@ -106,7 +108,13 @@ src/
   sessions/
     session-store.ts        # 会话文件列表/删除
     trust.ts                # 项目信任检测与读写
+  providers/
+    auth-store.ts           # auth.json 读写 + pi auth check
+    models-config.ts        # models.json 合并写（自定义模型源）
+    oauth.ts                # pi-ai PKCE loader 桥接
+    provider-service.ts     # 凭据/模型源编排
   shared/protocol.ts        # host <-> webview 契约
+  shared/provider-catalog.ts# provider/API 目录（host 与 webview 共用）
 media/src/                  # React webview（components/ + styles.css）
 ```
 
@@ -115,7 +123,7 @@ media/src/                  # React webview（components/ + styles.css）
 ```bash
 npm install
 npm run typecheck     # tsc --noEmit（strict + noUncheckedIndexedAccess）
-npm test              # 8 个用例：ChatModel 事件归约、diff 解析
+npm test              # 13 个用例：ChatModel 事件归约、diff 解析、auth/models 文件读写
 npm run build         # esbuild 打两个包：dist/extension.js、dist/webview.js+css
 npm run watch         # 增量构建
 npm run smoke         # 用真实 pi 走 启动 → get_state/模型/命令 → 停止
@@ -126,6 +134,7 @@ npm run package       # 构建 VSIX
 
 ## 已知边界
 
+- 视图固定在右侧边栏（secondary sidebar），需要 VS Code ≥ 1.101。
 - 一次只驱动一个工作区（多根工作区取第一个）。
 - 图片附件：协议已支持（`prompt.images`），composer 暂只做文件/选区引用。
 - 会话列表按 pi 的默认 session 目录扫描；自定义 `--session-dir` 未纳入。

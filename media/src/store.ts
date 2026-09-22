@@ -3,6 +3,9 @@ import type {
   DialogRequest,
   HostMessage,
   Meta,
+  OAuthEventView,
+  OAuthPromptView,
+  ProviderInfo,
   SlashCommand,
 } from "../../src/shared/protocol";
 import { EMPTY_META } from "../../src/shared/protocol";
@@ -13,6 +16,12 @@ export interface Toast {
   readonly message: string;
 }
 
+export interface ProviderStatus {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly busy: boolean;
+}
+
 export interface State {
   readonly meta: Meta;
   readonly items: readonly ChatItem[];
@@ -20,6 +29,12 @@ export interface State {
   readonly files: readonly string[];
   readonly commands: readonly SlashCommand[];
   readonly toasts: readonly Toast[];
+  readonly providers: readonly ProviderInfo[];
+  readonly oauthAvailable: boolean;
+  readonly providersOpen: boolean;
+  readonly providerStatus: ProviderStatus | null;
+  readonly oauthPrompt: OAuthPromptView | null;
+  readonly oauthMessage: string | null;
 }
 
 export type EffectMessage = Extract<
@@ -37,6 +52,12 @@ const INITIAL: State = {
   files: [],
   commands: [],
   toasts: [],
+  providers: [],
+  oauthAvailable: false,
+  providersOpen: false,
+  providerStatus: null,
+  oauthPrompt: null,
+  oauthMessage: null,
 };
 
 /** Minimal external store consumed through `useSyncExternalStore`. */
@@ -84,6 +105,28 @@ export class Store {
       case "commands":
         this.#set({ ...this.#state, commands: message.commands });
         return;
+      case "providers":
+        this.#set({
+          ...this.#state,
+          providers: message.providers,
+          oauthAvailable: message.oauthAvailable,
+        });
+        return;
+      case "providerStatus":
+        this.#set({
+          ...this.#state,
+          providerStatus: { ok: message.ok, message: message.message, busy: message.busy },
+        });
+        return;
+      case "oauthPrompt":
+        this.#set({ ...this.#state, oauthPrompt: message.prompt });
+        return;
+      case "oauthEvent":
+        this.#set({ ...this.#state, oauthMessage: describeOAuthEvent(message.event) });
+        return;
+      case "openProviders":
+        this.#set({ ...this.#state, providersOpen: true });
+        return;
       case "notice":
         this.#toast(message.level, message.message);
         return;
@@ -100,6 +143,14 @@ export class Store {
 
   dismissToast(id: string): void {
     this.#set({ ...this.#state, toasts: this.#state.toasts.filter((toast) => toast.id !== id) });
+  }
+
+  setProvidersOpen(open: boolean): void {
+    this.#set({
+      ...this.#state,
+      providersOpen: open,
+      ...(open ? {} : { oauthPrompt: null, oauthMessage: null }),
+    });
   }
 
   #toast(level: Toast["level"], message: string): void {
@@ -121,6 +172,21 @@ function upsert(items: readonly ChatItem[], item: ChatItem): readonly ChatItem[]
   const next = items.slice();
   next[index] = item;
   return next;
+}
+
+function describeOAuthEvent(event: OAuthEventView): string {
+  switch (event.kind) {
+    case "auth_url":
+      return event.instructions !== undefined && event.instructions.length > 0
+        ? `${event.instructions} (opening the browser… )`
+        : "Opening the browser to sign in…";
+    case "device_code":
+      return `Enter code ${event.userCode} at ${event.verificationUri}`;
+    case "progress":
+      return event.message;
+    default:
+      return event.message;
+  }
 }
 
 function applyDelta(
