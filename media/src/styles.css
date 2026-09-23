@@ -360,7 +360,7 @@ button {
 .msg-user .msg-actions {
   display: flex;
   gap: 2px;
-  opacity: 0;
+  opacity: 0.5;
   transition: opacity 0.12s ease;
 }
 .msg-user:hover .msg-actions {
@@ -640,6 +640,10 @@ button {
 }
 .tool-error {
   border-color: color-mix(in srgb, var(--vscode-charts-red, #f85149) 55%, transparent);
+}
+.tool-cancelled {
+  border-color: color-mix(in srgb, var(--vscode-charts-yellow, #d29922) 45%, transparent);
+  opacity: 0.85;
 }
 
 .tool-head {
@@ -945,6 +949,12 @@ button {
 .composer-box.disabled {
   opacity: 0.6;
 }
+.composer-box.bash-mode {
+  border-color: var(--vscode-charts-green, #3fb950);
+}
+.composer-box.bash-mode .composer-input {
+  font-family: var(--pi-mono);
+}
 
 .composer-input {
   width: 100%;
@@ -1003,6 +1013,10 @@ button {
 }
 .send-btn.stop {
   background: var(--vscode-charts-red, #f85149);
+}
+.send-btn.bash {
+  background: var(--vscode-charts-green, #3fb950);
+  color: #08210f;
 }
 
 .mode-toggle {
@@ -1495,6 +1509,99 @@ button {
   50% {
     opacity: 0;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Skills & plugins sheet                                              */
+/* ------------------------------------------------------------------ */
+
+.capabilities-sheet {
+  max-width: min(680px, 96vw);
+}
+.capability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.capability-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--pi-border);
+  border-radius: var(--pi-radius-sm);
+  background: var(--pi-code-bg);
+  padding: 8px 10px;
+  color: var(--vscode-foreground);
+}
+.capability-row:not(.static):hover {
+  border-color: var(--pi-accent);
+  background: var(--pi-hover);
+}
+.capability-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.capability-name {
+  font-family: var(--pi-mono);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capability-row-head .icon-btn {
+  margin-left: auto;
+  flex: none;
+}
+.capability-row:not(.static) .capability-row-head > svg:last-child {
+  margin-left: auto;
+  color: var(--pi-muted);
+  flex: none;
+}
+.capability-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--pi-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  color: var(--pi-muted);
+  flex: none;
+}
+.capability-badge.user {
+  color: var(--pi-accent);
+  border-color: var(--pi-accent);
+}
+.capability-badge.project {
+  color: var(--vscode-charts-green, #3fb950);
+}
+.capability-badge.runtime {
+  color: var(--vscode-charts-yellow, #d29922);
+}
+.capability-badge.kind-package {
+  color: var(--pi-accent);
+}
+.capability-badge.kind-extension {
+  color: var(--vscode-charts-green, #3fb950);
+}
+.capability-desc {
+  font-size: 12px;
+  color: var(--pi-muted);
+}
+.capability-path {
+  font-family: var(--pi-mono);
+  font-size: 10.5px;
+  color: var(--pi-muted);
+  opacity: 0.75;
+  overflow-wrap: anywhere;
 }
 
 /* ------------------------------------------------------------------ */

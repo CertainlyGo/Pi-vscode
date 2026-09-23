@@ -40,6 +40,19 @@ try {
   const stats = await engine.getSessionStats();
   console.log(`[smoke] stats: ${stats === undefined ? "none" : JSON.stringify(stats.tokens)}`);
 
+  let bashRequestId: string | undefined;
+  const bash = await engine.bash("echo pi-smoke-ok", (id) => {
+    bashRequestId = id;
+  });
+  const bashData = bash["data"];
+  const bashRecord =
+    bashData !== null && typeof bashData === "object" ? (bashData as Record<string, unknown>) : {};
+  console.log(
+    `[smoke] bash: id=${bashRequestId ?? "?"} exit=${String(bashRecord["exitCode"])} output=${JSON.stringify(
+      bashRecord["output"],
+    )}`,
+  );
+
   console.log(`[smoke] events seen: ${[...seen].sort().join(", ") || "none"}`);
   console.log("[smoke] OK");
 } finally {

@@ -230,6 +230,22 @@ export class EngineInstance {
     });
   }
 
+  /**
+   * Run a shell command and add its output to the conversation context.
+   * `onRequestId` receives the id pi will tag `bash_execution_update` with.
+   */
+  bash(command: string, onRequestId?: (id: string) => void): Promise<Record<string, unknown>> {
+    return this.peer.request(
+      { type: "bash", command },
+      onRequestId !== undefined ? { onId: onRequestId } : {},
+    );
+  }
+
+  /** Abort the shell command started with {@link bash}. */
+  abortBash(): Promise<Record<string, unknown>> {
+    return this.peer.request({ type: "abort_bash" });
+  }
+
   async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
     const data = await this.#requestData({ type: "clear_queue" });
     return {

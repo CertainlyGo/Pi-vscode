@@ -157,6 +157,8 @@ export interface Meta {
   readonly engineError?: string;
   readonly isStreaming: boolean;
   readonly isCompacting: boolean;
+  /** A `!command` shell command is running. */
+  readonly isBashRunning: boolean;
   readonly model: ModelInfo | null;
   readonly models: readonly ModelInfo[];
   readonly thinkingLevel: string;
@@ -192,6 +194,24 @@ export interface ProviderInfo {
   readonly baseUrl?: string;
   readonly api?: string;
   readonly models: readonly string[];
+}
+
+export interface SkillInfo {
+  readonly name: string;
+  readonly description?: string;
+  /** `user` | `project` | `path`. */
+  readonly location?: string;
+  readonly path?: string;
+}
+
+export interface PluginInfo {
+  readonly name: string;
+  /** `package` | `extension` | `command`. */
+  readonly kind: string;
+  /** `user` | `project` | `runtime`. */
+  readonly scope: string;
+  readonly detail?: string;
+  readonly path?: string;
 }
 
 export interface OAuthPromptView {
@@ -249,6 +269,8 @@ export type HostMessage =
   | { readonly type: "notice"; readonly level: NoteLevel; readonly message: string }
   | { readonly type: "files"; readonly files: readonly string[] }
   | { readonly type: "commands"; readonly commands: readonly SlashCommand[] }
+  | { readonly type: "skills"; readonly skills: readonly SkillInfo[] }
+  | { readonly type: "plugins"; readonly plugins: readonly PluginInfo[] }
   | {
       readonly type: "providers";
       readonly providers: readonly ProviderInfo[];
@@ -278,6 +300,8 @@ export type WebviewMessage =
       readonly attachments: readonly Attachment[];
     }
   | { readonly type: "abort" }
+  | { readonly type: "abortBash" }
+  | { readonly type: "bash"; readonly command: string }
   | { readonly type: "compact" }
   | { readonly type: "newSession" }
   | { readonly type: "switchSession"; readonly path: string }
@@ -288,6 +312,8 @@ export type WebviewMessage =
   | { readonly type: "setThinking"; readonly level: string }
   | { readonly type: "refresh" }
   | { readonly type: "requestFiles" }
+  | { readonly type: "requestSkills" }
+  | { readonly type: "requestPlugins" }
   | { readonly type: "requestProviders" }
   | {
       readonly type: "addApiKey";
@@ -325,6 +351,7 @@ export const EMPTY_META: Meta = {
   engine: "idle",
   isStreaming: false,
   isCompacting: false,
+  isBashRunning: false,
   model: null,
   models: [],
   thinkingLevel: "medium",

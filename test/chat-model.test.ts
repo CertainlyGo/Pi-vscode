@@ -266,3 +266,41 @@ test("merges live streaming usage into the session snapshot", () => {
   model.reset();
   assert.equal(model.meta.stats, null);
 });
+
+test("renders direct shell runs and streams their output", () => {
+  const { messages, model } = collect();
+  const id = model.beginBash("ls -la", "req-1");
+  assert.equal(model.meta.isBashRunning, true);
+
+  model.applyEvent({ type: "bash_execution_update", id: "req-1", delta: "a\n" });
+  model.applyEvent({ type: "bash_execution_update", id: "req-1", delta: "b\n" });
+  const running = model.items.find((entry) => entry.id === id);
+  if (running?.kind === "bash") {
+    assert.equal(running.output, "a\nb\n");
+    assert.equal(running.streaming, true);
+  }
+  assert.ok(messages.some((message) => message.type === "delta" && message.field === "output"));
+
+  // The final response keeps streamed output that a truncated payload drops.
+  model.endBash("req-1", { output: "a\n", exitCode: 0, truncated: true, fullOutputPath: "/tmp/out.log" });
+  const done = model.items.find((entry) => entry.id === id);
+  if (done?.kind === "bash") {
+    assert.equal(done.streaming, false);
+    assert.equal(done.output, "a\nb\n");
+    assert.equal(done.exitCode, 0);
+    assert.equal(done.truncated, true);
+    assert.equal(done.fullOutputPath, "/tmp/out.log");
+  }
+  assert.equal(model.meta.isBashRunning, false);
+
+  // Aborting marks in-flight shell runs as cancelled.
+  model.beginBash("sleep 30", "req-2");
+  assert.equal(model.meta.isBashRunning, true);
+  model.endAllBash();
+  assert.equal(model.meta.isBashRunning, false);
+  const cancelled = model.items.at(-1);
+  if (cancelled?.kind === "bash") {
+    assert.equal(cancelled.streaming, false);
+    assert.equal(cancelled.cancelled, true);
+  }
+});

@@ -107,6 +107,8 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking }: ModelPick
 
 export interface SessionPickerProps {
   readonly meta: Meta;
+  /** Display title for the active session (already derived by the caller). */
+  readonly title: string;
   readonly onSwitch: (path: string) => void;
   readonly onDelete: (path: string) => void;
   readonly onRename: (name: string) => void;
@@ -122,7 +124,7 @@ export function SessionPicker(props: SessionPickerProps): JSX.Element {
     setRenaming(false);
   });
 
-  const title = meta.sessionName ?? "New session";
+  const title = props.title;
 
   return (
     <div className="picker" ref={ref}>
@@ -158,7 +160,7 @@ export function SessionPicker(props: SessionPickerProps): JSX.Element {
                 type="button"
                 className="link-btn"
                 onClick={() => {
-                  setDraft(meta.sessionName ?? "");
+                  setDraft(title === "New session" ? "" : title);
                   setRenaming(true);
                 }}
               >

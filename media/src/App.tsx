@@ -1,9 +1,11 @@
 import type { JSX } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { Attachment, ChatItem, PromptMode } from "../../src/shared/protocol";
+import type { Attachment, ChatItem, Meta, PromptMode } from "../../src/shared/protocol";
 import { post } from "./vscode";
 import type { Store } from "./store";
 import { Composer } from "./components/Composer";
+import type { CapabilitiesTab } from "./components/CapabilitiesSheet";
+import { CapabilitiesSheet } from "./components/CapabilitiesSheet";
 import { DialogHost } from "./components/DialogHost";
 import { Icon } from "./components/Icons";
 import { MessageItem } from "./components/MessageItem";
@@ -33,6 +35,12 @@ export function App({ store }: AppProps): JSX.Element {
     providerStatus,
     oauthPrompt,
     oauthMessage,
+    skills,
+    skillsLoaded,
+    plugins,
+    pluginsLoaded,
+    capabilitiesOpen,
+    capabilitiesTab,
   } = state;
 
   const streamRef = useRef<HTMLDivElement | null>(null);
@@ -62,6 +70,7 @@ export function App({ store }: AppProps): JSX.Element {
   };
 
   const statusLabel = useMemo(() => describeStatus(meta), [meta]);
+  const sessionTitle = useMemo(() => deriveSessionTitle(meta, items), [meta, items]);
 
   const onFork = useCallback((entryId: string) => post({ type: "fork", entryId }), []);
   const onOpenFile = useCallback(
@@ -75,6 +84,7 @@ export function App({ store }: AppProps): JSX.Element {
     [],
   );
   const onAbort = useCallback(() => post({ type: "abort" }), []);
+  const onBash = useCallback((command: string) => post({ type: "bash", command }), []);
   const onCompact = useCallback(() => post({ type: "compact" }), []);
   const onSetModel = useCallback(
     (provider: string, modelId: string) => post({ type: "setModel", provider, modelId }),
@@ -85,6 +95,21 @@ export function App({ store }: AppProps): JSX.Element {
     post({ type: "requestProviders" });
     store.setProvidersOpen(true);
   }, [store]);
+  const onOpenCapabilities = useCallback(
+    (tab: CapabilitiesTab) => {
+      post({ type: tab === "skills" ? "requestSkills" : "requestPlugins" });
+      store.openCapabilities(tab);
+    },
+    [store],
+  );
+  const onCapabilitiesTab = useCallback(
+    (tab: CapabilitiesTab) => {
+      store.setCapabilitiesTab(tab);
+      if (tab === "skills" && !skillsLoaded) post({ type: "requestSkills" });
+      if (tab === "plugins" && !pluginsLoaded) post({ type: "requestPlugins" });
+    },
+    [store, skillsLoaded, pluginsLoaded],
+  );
 
   return (
     <div className="app">
@@ -95,6 +120,7 @@ export function App({ store }: AppProps): JSX.Element {
           </span>
           <SessionPicker
             meta={meta}
+            title={sessionTitle}
             onSwitch={(path) => post({ type: "switchSession", path })}
             onDelete={(path) => post({ type: "deleteSession", path })}
             onRename={(name) => post({ type: "renameSession", name })}
@@ -215,9 +241,11 @@ export function App({ store }: AppProps): JSX.Element {
         commands={commands}
         store={store}
         onSend={onSend}
+        onBash={onBash}
         onAbort={onAbort}
         onSetModel={onSetModel}
         onSetThinking={onSetThinking}
+        onOpenCapabilities={onOpenCapabilities}
       />
 
       <DialogHost dialog={dialog} onRespond={(id, response) => post({ type: "dialogResponse", id, response })} />
@@ -235,6 +263,22 @@ export function App({ store }: AppProps): JSX.Element {
           onRemove={(provider) => post({ type: "removeCredential", provider })}
           onOAuthLogin={(provider) => post({ type: "oauthLogin", provider })}
           onOAuthCancel={() => post({ type: "oauthCancel" })}
+        />
+      )}
+      {capabilitiesOpen && (
+        <CapabilitiesSheet
+          tab={capabilitiesTab}
+          skills={skills}
+          skillsLoaded={skillsLoaded}
+          plugins={plugins}
+          pluginsLoaded={pluginsLoaded}
+          onTab={onCapabilitiesTab}
+          onUse={(text) => {
+            store.dispatch({ type: "setDraft", text });
+            store.dispatch({ type: "focus" });
+            store.closeCapabilities();
+          }}
+          onClose={() => store.closeCapabilities()}
         />
       )}
       <OAuthDialog
@@ -294,11 +338,36 @@ function EmptyState({
   );
 }
 
-function describeStatus(meta: { engine: string; isStreaming: boolean; isCompacting: boolean }): string {
+function describeStatus(meta: {
+  engine: string;
+  isStreaming: boolean;
+  isCompacting: boolean;
+  isBashRunning: boolean;
+}): string {
   if (meta.engine === "crashed") return "stopped";
   if (meta.engine === "starting") return "starting";
   if (meta.engine !== "ready") return "idle";
   if (meta.isCompacting) return "compacting";
   if (meta.isStreaming) return "working";
+  if (meta.isBashRunning) return "shell";
   return "ready";
+}
+
+/**
+ * Title for the session picker. pi only exposes a name once one was set
+ * explicitly, so fall back to the persisted session title and then to the
+ * first user message of the current conversation.
+ */
+function deriveSessionTitle(meta: Meta, items: readonly ChatItem[]): string {
+  const explicit = meta.sessionName?.trim();
+  if (explicit !== undefined && explicit.length > 0) return explicit;
+  const active = meta.sessions.find((session) => session.path === meta.sessionFile);
+  if (active !== undefined && active.name.trim().length > 0) return active.name;
+  for (const item of items) {
+    if (item.kind !== "user") continue;
+    const firstLine = (item.text.trim().split(/\r?\n/, 1)[0] ?? "").trim();
+    if (firstLine.length === 0) continue;
+    return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+  }
+  return "New session";
 }

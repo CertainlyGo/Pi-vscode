@@ -62,7 +62,7 @@ function UserMessage({ item, onFork }: { item: UserItem; onFork: (entryId: strin
           <button
             type="button"
             className="icon-btn"
-            title="Branch from here"
+            title="Branch a new session from this message"
             onClick={() => onFork(item.entryId ?? "")}
           >
             <Icon name="branch" size={14} />
@@ -143,15 +143,29 @@ function CompactionMessage({ item }: { item: CompactionItem }): JSX.Element {
 }
 
 function BashMessage({ item, onOpenFile }: { item: BashItem; onOpenFile: (path: string, line?: number) => void }): JSX.Element {
+  const state = item.streaming
+    ? "running"
+    : item.cancelled === true
+      ? "cancelled"
+      : item.exitCode === 0
+        ? "ok"
+        : "error";
   return (
-    <div className={`tool tool-${item.streaming ? "running" : item.exitCode === 0 ? "ok" : "error"}`}>
+    <div className={`tool tool-${state}`}>
       <div className="tool-head static">
         <span className="tool-icon">
           <Icon name="terminal" size={14} />
         </span>
-        <span className="tool-label">Bash</span>
+        <span className="tool-label">Shell</span>
         <span className="tool-target">{item.command}</span>
+        {item.streaming === true && (
+          <span className="tool-status running">
+            <Icon name="spinner" size={13} />
+          </span>
+        )}
         {item.exitCode !== undefined && <span className="tool-duration">exit {item.exitCode}</span>}
+        {item.cancelled === true && <span className="tool-duration">cancelled</span>}
+        {item.truncated === true && <span className="tool-duration">truncated</span>}
       </div>
       {item.output.length > 0 && <pre className="tool-output">{item.output}</pre>}
       {item.fullOutputPath !== undefined && (

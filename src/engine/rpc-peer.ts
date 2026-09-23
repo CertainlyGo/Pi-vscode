@@ -49,6 +49,11 @@ export class RpcCommandError extends Error {
 export interface RpcRequestOptions {
   /** Timeout in ms. 0/undefined means no timeout (default: prompts can run long). */
   readonly timeoutMs?: number;
+  /**
+   * Called synchronously with the generated request id, before the command is
+   * written. pi echoes the id on streamed events (e.g. `bash_execution_update`).
+   */
+  readonly onId?: (id: string) => void;
 }
 
 interface PendingRequest {
@@ -98,6 +103,7 @@ export class RpcPeer {
       return Promise.reject(new RpcCommandError("engine is not running", command.type));
     }
     const id = this.#newId();
+    options.onId?.(id);
     return new Promise<Record<string, unknown>>((resolve, reject) => {
       const pending: PendingRequest = { command: command.type, resolve, reject, timer: undefined };
       const timeoutMs = options.timeoutMs ?? 0;

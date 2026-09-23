@@ -5,7 +5,9 @@ import type {
   Meta,
   OAuthEventView,
   OAuthPromptView,
+  PluginInfo,
   ProviderInfo,
+  SkillInfo,
   SlashCommand,
 } from "../../src/shared/protocol";
 import { EMPTY_META } from "../../src/shared/protocol";
@@ -35,6 +37,12 @@ export interface State {
   readonly providerStatus: ProviderStatus | null;
   readonly oauthPrompt: OAuthPromptView | null;
   readonly oauthMessage: string | null;
+  readonly skills: readonly SkillInfo[];
+  readonly skillsLoaded: boolean;
+  readonly plugins: readonly PluginInfo[];
+  readonly pluginsLoaded: boolean;
+  readonly capabilitiesOpen: boolean;
+  readonly capabilitiesTab: "skills" | "plugins";
 }
 
 export type EffectMessage = Extract<
@@ -58,6 +66,12 @@ const INITIAL: State = {
   providerStatus: null,
   oauthPrompt: null,
   oauthMessage: null,
+  skills: [],
+  skillsLoaded: false,
+  plugins: [],
+  pluginsLoaded: false,
+  capabilitiesOpen: false,
+  capabilitiesTab: "skills",
 };
 
 /** Minimal external store consumed through `useSyncExternalStore`. */
@@ -105,6 +119,12 @@ export class Store {
       case "commands":
         this.#set({ ...this.#state, commands: message.commands });
         return;
+      case "skills":
+        this.#set({ ...this.#state, skills: message.skills, skillsLoaded: true });
+        return;
+      case "plugins":
+        this.#set({ ...this.#state, plugins: message.plugins, pluginsLoaded: true });
+        return;
       case "providers":
         this.#set({
           ...this.#state,
@@ -151,6 +171,18 @@ export class Store {
       providersOpen: open,
       ...(open ? {} : { oauthPrompt: null, oauthMessage: null }),
     });
+  }
+
+  openCapabilities(tab: "skills" | "plugins"): void {
+    this.#set({ ...this.#state, capabilitiesOpen: true, capabilitiesTab: tab });
+  }
+
+  setCapabilitiesTab(tab: "skills" | "plugins"): void {
+    this.#set({ ...this.#state, capabilitiesTab: tab });
+  }
+
+  closeCapabilities(): void {
+    this.#set({ ...this.#state, capabilitiesOpen: false });
   }
 
   #toast(level: Toast["level"], message: string): void {

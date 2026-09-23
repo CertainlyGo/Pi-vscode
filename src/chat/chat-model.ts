@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  BashItem,
   ChatItem,
   CompactionItem,
   HostMessage,
@@ -242,6 +243,8 @@ export class ChatModel {
   /** Prompt tokens of the most recent message, used to estimate context live. */
   #lastPromptTokens = 0;
   readonly #toolItemByCallId = new Map<string, string>();
+  /** pi request id -> bash item id, for `bash_execution_update` events. */
+  readonly #bashItemByRequestId = new Map<string, string>();
   /** User messages we rendered optimistically, awaiting pi's echo. */
   readonly #pendingUserEcho: string[] = [];
 
@@ -324,6 +327,7 @@ export class ChatModel {
     this.#assistantId = null;
     this.#lastToolCallId = null;
     this.#toolItemByCallId.clear();
+    this.#bashItemByRequestId.clear();
     this.#pendingUserEcho.length = 0;
     this.#baseStats = null;
     this.#committedUsage = ZERO_COUNTERS;
@@ -331,6 +335,58 @@ export class ChatModel {
     this.#lastPromptTokens = 0;
     this.#emit({ type: "items", items: this.#items });
     this.#emitStats();
+    this.#updateBashRunning();
+  }
+
+  /* ------------------------- direct shell runs ---------------------- */
+
+  /** Render a `!command` run started from the composer. */
+  beginBash(command: string, requestId: string): string {
+    const id = this.#nextId("b");
+    const item: BashItem = { kind: "bash", id, command, output: "", at: Date.now(), streaming: true };
+    this.#items.push(item);
+    this.#bashItemByRequestId.set(requestId, id);
+    this.#emit({ type: "item", item });
+    this.#updateBashRunning();
+    return id;
+  }
+
+  /** Finalize a `!command` run with the RPC response payload. */
+  endBash(requestId: string, data: unknown): void {
+    const itemId = this.#bashItemByRequestId.get(requestId);
+    if (itemId === undefined) return;
+    this.#bashItemByRequestId.delete(requestId);
+    const index = this.#items.findIndex((entry) => entry.id === itemId);
+    const current = index === -1 ? undefined : this.#items[index];
+    if (current?.kind !== "bash") return;
+    const record = asRecord(data);
+    const responseOutput = str(record["output"]) ?? "";
+    // Streamed chunks include output the final (possibly truncated) response drops.
+    const output = current.output.length >= responseOutput.length ? current.output : responseOutput;
+    const exitCode = num(record["exitCode"]);
+    const fullOutputPath = str(record["fullOutputPath"]);
+    this.#patchItem(itemId, {
+      streaming: false,
+      ...(output !== current.output ? { output } : {}),
+      ...(exitCode !== undefined ? { exitCode } : {}),
+      ...(record["cancelled"] === true ? { cancelled: true } : {}),
+      ...(record["truncated"] === true ? { truncated: true } : {}),
+      ...(fullOutputPath !== undefined ? { fullOutputPath } : {}),
+    });
+    this.#updateBashRunning();
+  }
+
+  /** Mark every in-flight `!command` as stopped (abort, engine exit). */
+  endAllBash(): void {
+    let changed = false;
+    for (const item of this.#items) {
+      if (item.kind === "bash" && item.streaming) {
+        this.#patchItem(item.id, { streaming: false, cancelled: true });
+        changed = true;
+      }
+    }
+    this.#bashItemByRequestId.clear();
+    if (changed) this.#updateBashRunning();
   }
 
   /** Rebuild items from `get_messages`, optionally attaching fork entry ids. */
@@ -445,8 +501,10 @@ export class ChatModel {
     this.#items = items;
     this.#assistantId = null;
     this.#toolItemByCallId.clear();
+    this.#bashItemByRequestId.clear();
     this.#pendingUserEcho.length = 0;
     this.#emit({ type: "items", items: this.#items });
+    this.#updateBashRunning();
   }
 
   /**
@@ -522,6 +580,14 @@ export class ChatModel {
       case "compaction_end":
         this.#onCompactionEnd(record);
         break;
+      case "bash_execution_update": {
+        const requestId = str(record["id"]);
+        const delta = str(record["delta"]);
+        if (requestId !== undefined && delta !== undefined && delta.length > 0) {
+          this.#appendBash(requestId, delta);
+        }
+        break;
+      }
       case "auto_retry_start": {
         const attempt = num(record["attempt"]) ?? 1;
         const max = num(record["maxAttempts"]) ?? 1;
@@ -722,6 +788,20 @@ export class ChatModel {
   }
 
   /* ----------------------------- internals -------------------------- */
+
+  #appendBash(requestId: string, delta: string): void {
+    const itemId = this.#bashItemByRequestId.get(requestId);
+    if (itemId === undefined) return;
+    const index = this.#items.findIndex((entry) => entry.id === itemId);
+    const current = index === -1 ? undefined : this.#items[index];
+    if (current?.kind !== "bash") return;
+    this.#patchItem(itemId, { output: current.output + delta }, { field: "output", text: delta });
+  }
+
+  #updateBashRunning(): void {
+    const running = this.#items.some((item) => item.kind === "bash" && item.streaming);
+    if (this.#meta.isBashRunning !== running) this.setMeta({ isBashRunning: running });
+  }
 
   /** Replace the cumulative usage reported for the streaming message. */
   #setStreamingUsage(usage: UsageCounters | null): void {

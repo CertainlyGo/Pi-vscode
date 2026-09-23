@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import * as vscode from "vscode";
+import { pluginsFromSettings, readSettingsFile, skillsFromCommands } from "../capabilities/capability-service";
 import { EngineInstance } from "../engine/engine-instance";
 import type { EngineStatus } from "../engine/engine-instance";
 import { EngineRegistry } from "../engine/engine-registry";
@@ -174,9 +175,20 @@ export class ChatController implements vscode.Disposable {
         break;
       case "abort":
         await this.#withEngine(async (engine) => {
+          await engine.abortBash().catch(() => undefined);
           await engine.abort();
         });
         this.#model.setMeta({ isStreaming: false });
+        this.#model.endAllBash();
+        break;
+      case "abortBash":
+        await this.#withEngine(async (engine) => {
+          await engine.abortBash().catch(() => undefined);
+        });
+        this.#model.endAllBash();
+        break;
+      case "bash":
+        await this.#runBash(message.command);
         break;
       case "compact":
         await this.#compact();
@@ -238,6 +250,12 @@ export class ChatController implements vscode.Disposable {
         break;
       case "requestFiles":
         await this.#publishFiles();
+        break;
+      case "requestSkills":
+        await this.#publishSkills();
+        break;
+      case "requestPlugins":
+        await this.#publishPlugins();
         break;
       case "requestProviders":
         await this.#ensureLaunch();
@@ -432,6 +450,7 @@ export class ChatController implements vscode.Disposable {
         stderr !== undefined && stderr.length > 0 ? stderr.slice(-4000) : "The pi engine exited unexpectedly.";
       this.#log(`engine crashed: ${engineError}`);
       this.#model.setMeta({ engine: status, engineError, isStreaming: false });
+      this.#model.endAllBash();
       return;
     }
     this.#model.setMeta({ engine: status });
@@ -445,6 +464,9 @@ export class ChatController implements vscode.Disposable {
     // would briefly flip the UI back to idle, so only stats are refreshed.
     if (type === "turn_end" || type === "compaction_end") {
       void this.#refreshStats();
+    }
+    if (type === "turn_end") {
+      void this.#refreshForkEntryIds();
     }
     if (type === "agent_settled") {
       void this.#refreshState();
@@ -545,8 +567,7 @@ export class ChatController implements vscode.Disposable {
 
   async #refreshCommands(): Promise<void> {
     const engine = this.#engine;
-    if (engine?.status !== "ready") return;
-    const commands = await engine.getCommands();
+    const commands = engine?.status === "ready" ? await engine.getCommands() : [];
     const mapped: SlashCommand[] = [];
     for (const command of commands) {
       const name = str(command["name"]);
@@ -557,7 +578,36 @@ export class ChatController implements vscode.Disposable {
         ...(str(command["source"]) !== undefined ? { source: str(command["source"]) } : {}),
       });
     }
-    this.#view.post({ type: "commands", commands: mapped });
+    // pi handles `/skills` and `/plugins` only in its TUI; the extension owns
+    // its own viewers, so advertise them in the composer's slash menu.
+    const taken = new Set(mapped.map((command) => command.name));
+    const builtins: SlashCommand[] = [
+      { name: "skills", description: "Show available skills", source: "pi-vscode" },
+      { name: "plugins", description: "Show pi packages, extensions and commands", source: "pi-vscode" },
+    ].filter((command) => !taken.has(command.name));
+    this.#view.post({ type: "commands", commands: [...builtins, ...mapped] });
+  }
+
+  async #publishSkills(): Promise<void> {
+    const engine = this.#engine;
+    const commands = engine?.status === "ready" ? await engine.getCommands() : [];
+    this.#view.post({ type: "skills", skills: skillsFromCommands(commands) });
+  }
+
+  async #publishPlugins(): Promise<void> {
+    const engine = this.#engine;
+    const workspace = this.#activeWorkspace ?? this.#workspaceFolder();
+    const [userSettings, projectSettings, commands] = await Promise.all([
+      readSettingsFile(join(getAgentDir(), "settings.json")),
+      workspace !== undefined
+        ? readSettingsFile(join(workspace, ".pi", "settings.json"))
+        : Promise.resolve<Record<string, unknown>>({}),
+      engine?.status === "ready" ? engine.getCommands() : Promise.resolve([]),
+    ]);
+    this.#view.post({
+      type: "plugins",
+      plugins: pluginsFromSettings({ userSettings, projectSettings, commands }),
+    });
   }
 
   async #publishFiles(): Promise<void> {
@@ -601,6 +651,31 @@ export class ChatController implements vscode.Disposable {
       return;
     }
     await this.#refreshStats();
+  }
+
+  /** Run a `!command` from the composer and stream its output into the chat. */
+  async #runBash(command: string): Promise<void> {
+    const trimmed = command.trim();
+    if (trimmed.length === 0) return;
+    if (this.#engine?.status !== "ready") await this.ensureEngine();
+    const engine = this.#engine;
+    if (engine === undefined || engine.status !== "ready") {
+      this.#model.addNote("warn", "Cannot run the command: the pi engine is not running.");
+      return;
+    }
+
+    let requestId: string | undefined;
+    try {
+      const response = await engine.bash(trimmed, (id) => {
+        requestId = id;
+        // Register the item before the command runs so streamed chunks land.
+        this.#model.beginBash(trimmed, id);
+      });
+      if (requestId !== undefined) this.#model.endBash(requestId, response["data"]);
+    } catch (error) {
+      if (requestId !== undefined) this.#model.endBash(requestId, { cancelled: true });
+      this.#model.addNote("error", `Command failed: ${describeError(error)}`);
+    }
   }
 
   async #sendPrompt(

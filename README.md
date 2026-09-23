@@ -17,7 +17,7 @@
 │  └ ⏺ Run   npm test         exit 1 ┘ │
 ├──────────────────────────────────────┤
 │ [ @src/a.ts × ]                       │  attachments
-│ Ask pi to build, fix or explain…      │  composer
+│ Ask pi…  @ files  / commands  ! shell  │  composer
 │ [✦ deepseek-v4.1-flash ▾]            │  model picker
 │ ↑12.3k ↓4.5k ⚡58% 34% $0.12 [Compact] │  usage bar + 手动 compact
 └──────────────────────────────────────┘
@@ -29,9 +29,10 @@
 - **工具卡片**：bash / read / edit / write / grep / find / ls 各自有图标、标题、目标、耗时与状态；`edit`/`write` 渲染行级彩色 diff，输出流式增长。
 - **内联 diff 与编辑器联动**：diff 卡片可「Open diff」在编辑器里以 `diff` 语言查看，「Open file」跳到真实文件与首个改动行。
 - **运行中纠偏**：agent 工作时 composer 出现 `Steer / Queue` 切换 —— 插话在工具跑完后生效，排队等当前回合结束。
-- **@ 引用与 / 命令**：`@` 模糊补全工作区文件（发送时由扩展读入内容并包成 `<file>` 上下文），`/` 补全 pi 的 extension commands、prompt templates 与 skills。
+- **@ 引用、/ 命令与 ! shell**：`@` 模糊补全工作区文件（发送时由扩展读入内容并包成 `<file>` 上下文），`/` 补全 pi 的 extension commands、prompt templates 与 skills，`!` 开头直接调用 pi 的 `bash` RPC 执行 shell 命令（输出流式写入 Shell 卡片，可随 Stop 一起中断，结果会进入下一轮上下文）。
+- **/skills 与 /plugins 查看能力**：两个内置命令打开「Skills & plugins」面板 —— Skills 列出 pi 上报的 `skill:*`（名称/描述/user·project/路径，点一下把 `/skill:name` 填进 composer）；Plugins 汇总 `~/.pi/agent/settings.json` 与 `.pi/settings.json` 里的 packages、本地 extensions，以及运行中引擎注册的 extension commands。
 - **编辑器命令**：右键「Add Selection to pi」「Add File to pi」，或快捷键 `Ctrl+Alt+P` 聚焦对话、`Ctrl+Alt+N` 新建会话。
-- **会话管理**：历史列表（首条提问自动命名）、切换、重命名、删除、从任意历史用户消息「Branch from here」（pi 的 fork 语义）。
+- **会话管理**：左上角标题随当前会话变化（显式名称 → 持久化会话标题 → 首条用户消息），历史列表、切换、重命名、删除，以及从任意用户消息「Branch a new session from this message」按 pi 的 fork 语义开新分支（分支按钮常驻可见）。
 - **模型与思考**：按 provider 分组的模型选择器 + 思考等级切换，来自 pi 自己的模型清单。
 - **供应商与模型源管理**：内置面板可直接增删 API Key（含自定义网关 baseUrl 覆盖）、新建 OpenAI/Anthropic/Google 兼容的自定义模型源（provider id + api + baseUrl + 模型列表），以及复用 pi 自身 PKCE 流程的订阅登录（Codex / Claude Pro·Max / Copilot / Grok / OpenRouter / Kimi / Meta / Radius）。每次保存都跑 `pi auth check` 验证，并自动重启引擎刷新模型列表。
 - **用量实时统计 + 主动 compact**：composer 上方常驻一条用量栏 —— `↑` 上传（prompt）token、`↓` 下载（completion）token、`⚡` 缓存命中率（cacheRead / prompt）、上下文占用百分比与进度条（≥60% 变黄、≥85% 变红）、会话费用；流式过程中直接消费 `message_update.usage` 增量刷新，上下文占用用当前 prompt token 实时估算。右侧 `Compact` 按钮调用 pi 的 `compact` RPC 主动压缩上下文（运行中自动禁用），结果以压缩卡片渲染在对话里。

@@ -11,9 +11,11 @@ export interface ComposerProps {
   readonly commands: readonly SlashCommand[];
   readonly store: Store;
   readonly onSend: (text: string, mode: PromptMode, attachments: readonly Attachment[]) => void;
+  readonly onBash: (command: string) => void;
   readonly onAbort: () => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
+  readonly onOpenCapabilities: (tab: "skills" | "plugins") => void;
 }
 
 interface Suggestion {
@@ -34,6 +36,7 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
 
   const ready = meta.engine === "ready";
   const streaming = meta.isStreaming;
+  const bashMode = text.trimStart().startsWith("!");
 
   // Imperative messages from the host (editor commands, extension UI, focus).
   useEffect(
@@ -64,6 +67,12 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
   }, [text]);
 
   const updateSuggestions = (value: string): void => {
+    // `!command` runs a shell command: no file/command completion there.
+    if (value.trimStart().startsWith("!")) {
+      setSuggestions([]);
+      setSuggestionKind(null);
+      return;
+    }
     const caret = textareaRef.current?.selectionStart ?? value.length;
     const before = value.slice(0, caret);
     const token = /(^|\s)([@/])([^\s@/]*)$/.exec(before);
@@ -101,10 +110,21 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
     setSuggestions(
       matches.map((name) => {
         const command = commands.find((entry) => entry.name === name);
+        // `/skills` and `/plugins` open a sheet: do it on the first Enter.
+        const opensSheet =
+          command?.source === "pi-vscode" && (name === "skills" || name === "plugins");
         return {
           label: `/${name}`,
           ...(command?.description !== undefined ? { detail: command.description } : {}),
           apply: () => {
+            if (opensSheet) {
+              setText((current) => replaceToken(current, caret, 1 + query.length));
+              setAttachments([]);
+              setSuggestions([]);
+              setSuggestionKind(null);
+              props.onOpenCapabilities(name === "plugins" ? "plugins" : "skills");
+              return;
+            }
             setText((current) => replaceToken(current, caret, 1 + query.length, `/${name} `));
             setSuggestions([]);
             setSuggestionKind(null);
@@ -116,7 +136,28 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
 
   const submit = (): void => {
     const trimmed = text.trim();
-    if (!ready || (trimmed.length === 0 && attachments.length === 0)) return;
+    if (!ready) return;
+    if (bashMode) {
+      const command = trimmed.replace(/^!+\s*/, "");
+      if (command.length === 0) return;
+      props.onBash(command);
+      setText("");
+      setAttachments([]);
+      setSuggestions([]);
+      setSuggestionKind(null);
+      return;
+    }
+    if (trimmed.length === 0 && attachments.length === 0) return;
+    // `/skills` and `/plugins` open the extension's own viewers.
+    const capability = /^\/(skills|plugins)\s*$/i.exec(trimmed);
+    if (capability !== null) {
+      props.onOpenCapabilities(capability[1]?.toLowerCase() === "plugins" ? "plugins" : "skills");
+      setText("");
+      setAttachments([]);
+      setSuggestions([]);
+      setSuggestionKind(null);
+      return;
+    }
     props.onSend(trimmed, streaming ? mode : "send", attachments);
     setText("");
     setAttachments([]);
@@ -171,7 +212,7 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
         </div>
       ) : null}
 
-      <div className={`composer-box ${ready ? "" : "disabled"}`}>
+      <div className={`composer-box ${ready ? "" : "disabled"} ${bashMode ? "bash-mode" : ""}`}>
         {attachments.length > 0 && (
           <div className="attachment-chips">
             {attachments.map((attachment, index) => (
@@ -214,7 +255,13 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
           className="composer-input"
           rows={1}
           value={text}
-          placeholder={ready ? "Ask pi to build, fix or explain…  (@ files, / commands)" : "Starting pi…"}
+          placeholder={
+            ready
+              ? bashMode
+                ? "Run a shell command…"
+                : "Ask pi to build, fix or explain…  (@ files, / commands, ! shell)"
+              : "Starting pi…"
+          }
           disabled={!ready}
           onChange={(event) => {
             setText(event.target.value);
@@ -250,6 +297,11 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
                 </button>
               </div>
             )}
+            {meta.isBashRunning && !streaming && (
+              <button type="button" className="send-btn stop" title="Stop command" onClick={props.onAbort}>
+                <Icon name="stop" size={15} />
+              </button>
+            )}
             {streaming ? (
               <button type="button" className="send-btn stop" title="Stop" onClick={props.onAbort}>
                 <Icon name="stop" size={15} />
@@ -257,12 +309,15 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
             ) : (
               <button
                 type="button"
-                className="send-btn"
-                title="Send"
-                disabled={!ready || (text.trim().length === 0 && attachments.length === 0)}
+                className={`send-btn ${bashMode ? "bash" : ""}`}
+                title={bashMode ? "Run command" : "Send"}
+                disabled={
+                  !ready ||
+                  (bashMode ? text.trim().length <= 1 : text.trim().length === 0 && attachments.length === 0)
+                }
                 onClick={submit}
               >
-                <Icon name="send" size={15} />
+                <Icon name={bashMode ? "terminal" : "send"} size={15} />
               </button>
             )}
           </div>
