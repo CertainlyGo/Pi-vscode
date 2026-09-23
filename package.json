@@ -6,6 +6,10 @@
   "publisher": "pi-local",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CertainlyGo/Pi-vscode.git"
+  },
   "engines": {
     "vscode": "^1.101.0"
   },
@@ -21,6 +25,11 @@
     "ai",
     "chat"
   ],
+  "icon": "pics/1.png",
+  "galleryBanner": {
+    "color": "#0d1b3e",
+    "theme": "dark"
+  },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",

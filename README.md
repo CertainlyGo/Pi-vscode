@@ -1,8 +1,21 @@
-# pi for VS Code
+<p align="center">
+  <img src="pics/1.png" width="128" alt="pi for VS Code" />
+</p>
 
-把 [pi](https://github.com/earendil-works/pi) coding agent 搬进 VS Code **右侧边栏**的图形前端，交互风格对齐 **Codex** 与 **Claude Code**：编辑器右上角一个按钮打开，一条流式对话、工具卡片、内联 diff、模型/思考等级、供应商与模型源管理、会话历史与分支，全程不离开编辑器。
+<h1 align="center">pi for VS Code</h1>
+
+<p align="center">
+  把 <a href="https://github.com/earendil-works/pi">pi</a> coding agent 搬进 VS Code <b>右侧边栏</b>的图形前端，<br />
+  交互风格对齐 <b>Codex</b> 与 <b>Claude Code</b>：编辑器右上角一个按钮打开，<br />
+  一条流式对话、工具卡片、内联 diff、模型 / 思考等级、供应商与模型源管理、会话历史与分支，<br />
+  全程不离开编辑器。
+</p>
+
+![pi for VS Code：侧边栏对话、工具卡片、内联 diff 与用量栏](pics/2.png)
 
 引擎跑的是 pi 本体（`pi --mode rpc` 子进程），本扩展**只做前端**，不重新实现 agent 循环。
+
+界面结构：
 
 ```
 ┌──────────────────────────────────────┐
@@ -52,7 +65,10 @@ pi auth check   # 确认至少配置了一个 provider
 然后任选其一：
 
 ```bash
-# 从源码构建 VSIX
+# 从 GitHub Releases 下载 pi-vscode-*.vsix 后直接安装
+code --install-extension pi-vscode-0.1.0.vsix
+
+# 或从源码构建 VSIX
 npm install
 npm run package          # 产出 pi-vscode-0.1.0.vsix
 code --install-extension pi-vscode-0.1.0.vsix

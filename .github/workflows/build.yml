@@ -53,3 +53,9 @@ jobs:
           files: pi-vscode-*.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 发布到 VS Code Marketplace（需要仓库 secret: VSCE_PAT）
+      - name: Publish to VS Code Marketplace
+        run: npx --yes @vscode/vsce publish --packagePath pi-vscode-${{ steps.package-version.outputs.version }}.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
