@@ -27,10 +27,9 @@ export interface ModelPickerProps {
   readonly meta: Meta;
   readonly onSelectModel: (provider: string, modelId: string) => void;
   readonly onSelectThinking: (level: string) => void;
-  readonly onManageProviders: () => void;
 }
 
-export function ModelPicker({ meta, onSelectModel, onSelectThinking, onManageProviders }: ModelPickerProps): JSX.Element {
+export function ModelPicker({ meta, onSelectModel, onSelectThinking }: ModelPickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, () => setOpen(false));
 
@@ -55,7 +54,7 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking, onManagePro
           <div className="popover-head">Model</div>
           {meta.models.length === 0 && (
             <div className="popover-empty">
-              No models available. Add a credential or a custom model source first.
+              No models available. Use the key button in the header to add a credential or model source.
             </div>
           )}
           {[...grouped].map(([provider, models]) => (
@@ -100,18 +99,6 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking, onManagePro
             </>
           )}
 
-          <div className="popover-foot">
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => {
-                setOpen(false);
-                onManageProviders();
-              }}
-            >
-              <Icon name="key" size={13} /> Manage providers &amp; models
-            </button>
-          </div>
         </div>
       )}
     </div>
@@ -121,7 +108,6 @@ export function ModelPicker({ meta, onSelectModel, onSelectThinking, onManagePro
 export interface SessionPickerProps {
   readonly meta: Meta;
   readonly onSwitch: (path: string) => void;
-  readonly onNew: () => void;
   readonly onDelete: (path: string) => void;
   readonly onRename: (name: string) => void;
 }
@@ -148,16 +134,6 @@ export function SessionPicker(props: SessionPickerProps): JSX.Element {
       {open && (
         <div className="popover session-popover">
           <div className="session-actions">
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => {
-                props.onNew();
-                setOpen(false);
-              }}
-            >
-              <Icon name="plus" size={13} /> New session
-            </button>
             {renaming ? (
               <form
                 className="rename-form"

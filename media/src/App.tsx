@@ -12,6 +12,7 @@ import { SessionPicker } from "./components/Pickers";
 import { ProvidersSheet } from "./components/ProvidersSheet";
 import { Toasts } from "./components/Toasts";
 import { ToolCard } from "./components/ToolCard";
+import { UsageBar } from "./components/UsageBar";
 
 export interface AppProps {
   readonly store: Store;
@@ -74,6 +75,7 @@ export function App({ store }: AppProps): JSX.Element {
     [],
   );
   const onAbort = useCallback(() => post({ type: "abort" }), []);
+  const onCompact = useCallback(() => post({ type: "compact" }), []);
   const onSetModel = useCallback(
     (provider: string, modelId: string) => post({ type: "setModel", provider, modelId }),
     [],
@@ -94,7 +96,6 @@ export function App({ store }: AppProps): JSX.Element {
           <SessionPicker
             meta={meta}
             onSwitch={(path) => post({ type: "switchSession", path })}
-            onNew={() => post({ type: "newSession" })}
             onDelete={(path) => post({ type: "deleteSession", path })}
             onRename={(name) => post({ type: "renameSession", name })}
           />
@@ -206,6 +207,8 @@ export function App({ store }: AppProps): JSX.Element {
         )}
       </main>
 
+      <UsageBar meta={meta} onCompact={onCompact} />
+
       <Composer
         meta={meta}
         files={files}
@@ -215,7 +218,6 @@ export function App({ store }: AppProps): JSX.Element {
         onAbort={onAbort}
         onSetModel={onSetModel}
         onSetThinking={onSetThinking}
-        onManageProviders={onManageProviders}
       />
 
       <DialogHost dialog={dialog} onRespond={(id, response) => post({ type: "dialogResponse", id, response })} />

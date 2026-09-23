@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Attachment, Meta, PromptMode, SlashCommand } from "../../../src/shared/protocol";
 import type { Store } from "../store";
 import { Icon } from "./Icons";
@@ -14,7 +14,6 @@ export interface ComposerProps {
   readonly onAbort: () => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
-  readonly onManageProviders: () => void;
 }
 
 interface Suggestion {
@@ -155,8 +154,6 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
     }
   };
 
-  const stats = useMemo(() => formatStats(meta), [meta]);
-
   return (
     <footer className="composer">
       {meta.queue.steering.length > 0 || meta.queue.followUp.length > 0 ? (
@@ -232,9 +229,7 @@ export const Composer = memo(function Composer(props: ComposerProps): JSX.Elemen
               meta={meta}
               onSelectModel={props.onSetModel}
               onSelectThinking={props.onSetThinking}
-              onManageProviders={props.onManageProviders}
             />
-            {stats !== null && <span className="stats">{stats}</span>}
           </div>
           <div className="composer-foot-right">
             {streaming && (
@@ -311,22 +306,4 @@ function fuzzyFilter(values: readonly string[], query: string, limit: number): s
   }
   scored.sort((a, b) => a.score - b.score || a.value.localeCompare(b.value));
   return scored.slice(0, limit).map((entry) => entry.value);
-}
-
-function formatStats(meta: Meta): string | null {
-  const stats = meta.stats;
-  if (stats === null || stats.totalTokens === 0) return null;
-  const parts: string[] = [];
-  parts.push(`${formatTokens(stats.totalTokens)} tok`);
-  if (stats.contextPercent !== undefined && stats.contextPercent !== null) {
-    parts.push(`ctx ${Math.round(stats.contextPercent)}%`);
-  }
-  if (stats.cost > 0) parts.push(`$${stats.cost.toFixed(2)}`);
-  return parts.join(" · ");
-}
-
-function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
 }

@@ -6,7 +6,7 @@
 
 ```
 ┌──────────────────────────────────────┐
-│ π  session ▾          ● ready  + ↻   │  header：会话 / 状态
+│ π  session ▾        ● ready  ⚿ + ↻ ▤ │  header：会话 / 状态 / 操作
 ├──────────────────────────────────────┤
 │  > fix the failing tests              │  user
 │                                      │
@@ -18,7 +18,8 @@
 ├──────────────────────────────────────┤
 │ [ @src/a.ts × ]                       │  attachments
 │ Ask pi to build, fix or explain…      │  composer
-│ [✦ deepseek-v4.1-flash ▾]  12.3k tok │  model + stats
+│ [✦ deepseek-v4.1-flash ▾]            │  model picker
+│ ↑12.3k ↓4.5k ⚡58% 34% $0.12 [Compact] │  usage bar + 手动 compact
 └──────────────────────────────────────┘
 ```
 
@@ -33,7 +34,7 @@
 - **会话管理**：历史列表（首条提问自动命名）、切换、重命名、删除、从任意历史用户消息「Branch from here」（pi 的 fork 语义）。
 - **模型与思考**：按 provider 分组的模型选择器 + 思考等级切换，来自 pi 自己的模型清单。
 - **供应商与模型源管理**：内置面板可直接增删 API Key（含自定义网关 baseUrl 覆盖）、新建 OpenAI/Anthropic/Google 兼容的自定义模型源（provider id + api + baseUrl + 模型列表），以及复用 pi 自身 PKCE 流程的订阅登录（Codex / Claude Pro·Max / Copilot / Grok / OpenRouter / Kimi / Meta / Radius）。每次保存都跑 `pi auth check` 验证，并自动重启引擎刷新模型列表。
-- **统计**：token、上下文占用、费用实时显示（`get_session_stats`）。
+- **用量实时统计 + 主动 compact**：composer 上方常驻一条用量栏 —— `↑` 上传（prompt）token、`↓` 下载（completion）token、`⚡` 缓存命中率（cacheRead / prompt）、上下文占用百分比与进度条（≥60% 变黄、≥85% 变红）、会话费用；流式过程中直接消费 `message_update.usage` 增量刷新，上下文占用用当前 prompt token 实时估算。右侧 `Compact` 按钮调用 pi 的 `compact` RPC 主动压缩上下文（运行中自动禁用），结果以压缩卡片渲染在对话里。
 - **扩展 UI 协议**：pi 扩展的 `select / confirm / input / editor` 对话框与 `notify` 通知在 webview 内渲染。
 - **信任门**：检测到 `.pi/*`、项目 skills 等需要信任的资源时先询问，决定写回 pi 自己的 `trust.json`，与 TUI 共享。
 - **主题跟随**：全部使用 `--vscode-*` 变量，明暗主题自动适配。
@@ -63,7 +64,7 @@ code --install-extension pi-vscode-0.1.0.vsix
 1. 打开一个文件夹作为工作区。
 2. 点编辑器右上角的 **π** 按钮（或 `Ctrl+Alt+P`）在右侧边栏打开对话；也可以从命令面板执行 `pi: Open pi Chat`。
 3. 首次若目录含项目级资源，先决定是否信任。
-4. 需要凭据时点 composer 左下角模型胶囊 →「Manage providers & models」，或标题栏的钥匙按钮：填 API Key、加自定义模型源、或走订阅登录。
+4. 需要凭据时点对话头部（header）的钥匙按钮：填 API Key、加自定义模型源、或走订阅登录。每个功能只保留一个入口：新建会话 `+`、供应商钥匙、重启引擎 `↻`、日志 `▤`，其余同名入口已移除（命令面板与快捷键仍然可用）。
 5. 直接描述任务；`@` 引文件、`/` 用命令。
 
 ## 设置

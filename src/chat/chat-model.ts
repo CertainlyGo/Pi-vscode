@@ -68,6 +68,69 @@ function contentAttachments(content: unknown): Attachment[] {
   return attachments;
 }
 
+/** Running token/cost counters for one assistant message. */
+export interface UsageCounters {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly cost: number;
+}
+
+const ZERO_COUNTERS: UsageCounters = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+
+function addCounters(a: UsageCounters, b: UsageCounters): UsageCounters {
+  return {
+    input: a.input + b.input,
+    output: a.output + b.output,
+    cacheRead: a.cacheRead + b.cacheRead,
+    cacheWrite: a.cacheWrite + b.cacheWrite,
+    cost: a.cost + b.cost,
+  };
+}
+
+function hasUsage(counters: UsageCounters): boolean {
+  return (
+    counters.input > 0 ||
+    counters.output > 0 ||
+    counters.cacheRead > 0 ||
+    counters.cacheWrite > 0 ||
+    counters.cost > 0
+  );
+}
+
+function sameCounters(a: UsageCounters, b: UsageCounters): boolean {
+  return (
+    a.input === b.input &&
+    a.output === b.output &&
+    a.cacheRead === b.cacheRead &&
+    a.cacheWrite === b.cacheWrite &&
+    a.cost === b.cost
+  );
+}
+
+/** Read a raw provider `Usage` payload (streaming updates, `message_end`). */
+export function parseMessageUsage(usage: unknown): UsageCounters | null {
+  const record = asRecord(usage);
+  const input = num(record["input"]);
+  const output = num(record["output"]);
+  if (input === undefined && output === undefined) return null;
+  const cost = asRecord(record["cost"]);
+  const costTotal = num(cost["total"]);
+  const costSum =
+    (num(cost["input"]) ?? 0) +
+    (num(cost["output"]) ?? 0) +
+    (num(cost["cacheRead"]) ?? 0) +
+    (num(cost["cacheWrite"]) ?? 0);
+  return {
+    input: input ?? 0,
+    output: output ?? 0,
+    cacheRead: num(record["cacheRead"]) ?? 0,
+    cacheWrite: num(record["cacheWrite"]) ?? 0,
+    cost: costTotal ?? costSum,
+  };
+}
+
 export interface ToolContent {
   readonly text: string;
   readonly diff?: string;
@@ -170,6 +233,14 @@ export class ChatModel {
   #counter = 0;
   #assistantId: string | null = null;
   #lastToolCallId: string | null = null;
+  /** Session totals as reported by `get_session_stats`. */
+  #baseStats: UsageStats | null = null;
+  /** Usage of finished messages of the in-flight turn, not yet in `#baseStats`. */
+  #committedUsage: UsageCounters = ZERO_COUNTERS;
+  /** Cumulative usage reported for the message currently streaming. */
+  #streamingUsage: UsageCounters = ZERO_COUNTERS;
+  /** Prompt tokens of the most recent message, used to estimate context live. */
+  #lastPromptTokens = 0;
   readonly #toolItemByCallId = new Map<string, string>();
   /** User messages we rendered optimistically, awaiting pi's echo. */
   readonly #pendingUserEcho: string[] = [];
@@ -192,6 +263,18 @@ export class ChatModel {
 
   setShowThinking(show: boolean): void {
     this.setMeta({ showThinking: show });
+  }
+
+  /**
+   * Install the authoritative session totals. Any live counters are dropped
+   * because the fresh snapshot already includes every completed message.
+   */
+  setStats(stats: UsageStats | null): void {
+    this.#baseStats = stats;
+    this.#committedUsage = ZERO_COUNTERS;
+    this.#streamingUsage = ZERO_COUNTERS;
+    this.#lastPromptTokens = 0;
+    this.#emitStats();
   }
 
   setMeta(patch: Partial<Meta>): void {
@@ -242,7 +325,12 @@ export class ChatModel {
     this.#lastToolCallId = null;
     this.#toolItemByCallId.clear();
     this.#pendingUserEcho.length = 0;
+    this.#baseStats = null;
+    this.#committedUsage = ZERO_COUNTERS;
+    this.#streamingUsage = ZERO_COUNTERS;
+    this.#lastPromptTokens = 0;
     this.#emit({ type: "items", items: this.#items });
+    this.#emitStats();
   }
 
   /** Rebuild items from `get_messages`, optionally attaching fork entry ids. */
@@ -391,10 +479,12 @@ export class ChatModel {
         this.setMeta({ isStreaming: true });
         break;
       case "agent_settled":
+        this.#commitStreamingUsage(null);
         this.setMeta({ isStreaming: false, isCompacting: false });
         this.#settleStreaming();
         break;
       case "agent_end":
+        this.#commitStreamingUsage(null);
         this.#settleStreaming();
         break;
       case "turn_end":
@@ -477,6 +567,8 @@ export class ChatModel {
     }
     if (role !== "assistant") return;
 
+    this.#commitStreamingUsage(parseMessageUsage(message["usage"]));
+
     const item = this.#assistantItem();
     if (item === undefined) return;
     const content = message["content"];
@@ -509,6 +601,7 @@ export class ChatModel {
     const delta = asRecord(record["assistantMessageEvent"]);
     const type = str(delta["type"]);
     if (type === undefined) return;
+    this.#setStreamingUsage(parseMessageUsage(record["usage"]));
     switch (type) {
       case "text_start":
       case "thinking_start":
@@ -629,6 +722,75 @@ export class ChatModel {
   }
 
   /* ----------------------------- internals -------------------------- */
+
+  /** Replace the cumulative usage reported for the streaming message. */
+  #setStreamingUsage(usage: UsageCounters | null): void {
+    if (usage === null || sameCounters(usage, this.#streamingUsage)) return;
+    this.#streamingUsage = usage;
+    this.#rememberPrompt(usage);
+    this.#emitStats();
+  }
+
+  /**
+   * Fold the finished message's usage into the running totals. A fresh
+   * `get_session_stats` snapshot later replaces both, so the counters only
+   * bridge the gap between `message_end` and the next stats refresh.
+   */
+  #commitStreamingUsage(usage: UsageCounters | null): void {
+    const final = usage ?? this.#streamingUsage;
+    if (!hasUsage(final) && !hasUsage(this.#streamingUsage)) return;
+    this.#committedUsage = addCounters(this.#committedUsage, final);
+    this.#streamingUsage = ZERO_COUNTERS;
+    this.#rememberPrompt(final);
+    this.#emitStats();
+  }
+
+  /**
+   * Remember the newest prompt size. In a tool loop a turn spans several
+   * assistant messages, and only the latest prompt reflects the context.
+   */
+  #rememberPrompt(usage: UsageCounters): void {
+    const prompt = usage.input + usage.cacheRead + usage.cacheWrite;
+    if (prompt > 0) this.#lastPromptTokens = prompt;
+  }
+
+  /** Merge the session snapshot with the live counters and publish it. */
+  #emitStats(): void {
+    const base = this.#baseStats;
+    const live = addCounters(this.#committedUsage, this.#streamingUsage);
+    const liveActive = hasUsage(live);
+    if (base === null && !liveActive) {
+      if (this.#meta.stats !== null) this.setMeta({ stats: null });
+      return;
+    }
+
+    let contextTokens = base?.contextTokens;
+    let contextPercent = base?.contextPercent;
+    const contextWindow = base?.contextWindow;
+    const promptTokens = this.#lastPromptTokens;
+    if (promptTokens > 0 && contextWindow !== undefined && contextWindow > 0) {
+      // A streaming prompt *is* the current context, so this tracks compaction
+      // thresholds live instead of waiting for the next turn to end.
+      contextTokens = promptTokens;
+      contextPercent = Math.min(100, (promptTokens / contextWindow) * 100);
+    }
+
+    this.setMeta({
+      stats: {
+        input: (base?.input ?? 0) + live.input,
+        output: (base?.output ?? 0) + live.output,
+        cacheRead: (base?.cacheRead ?? 0) + live.cacheRead,
+        cacheWrite: (base?.cacheWrite ?? 0) + live.cacheWrite,
+        totalTokens:
+          (base?.totalTokens ?? 0) + live.input + live.output + live.cacheRead + live.cacheWrite,
+        cost: (base?.cost ?? 0) + live.cost,
+        ...(contextTokens !== undefined ? { contextTokens } : {}),
+        ...(contextWindow !== undefined ? { contextWindow } : {}),
+        ...(contextPercent !== undefined ? { contextPercent } : {}),
+        ...(liveActive ? { live: true } : {}),
+      },
+    });
+  }
 
   #handleUserEcho(text: string): void {
     if (this.#pendingUserEcho[0] === text) {

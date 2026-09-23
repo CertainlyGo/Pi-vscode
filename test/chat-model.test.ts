@@ -199,3 +199,70 @@ test("surfaces retry and compaction notes", () => {
     assert.equal(compaction.tokensAfter, 200);
   }
 });
+
+test("merges live streaming usage into the session snapshot", () => {
+  const { model } = collect();
+  model.setStats(
+    toUsageStats({
+      tokens: { input: 100, output: 20, cacheRead: 40, cacheWrite: 0, total: 160 },
+      cost: 0.5,
+      contextUsage: { tokens: 1000, contextWindow: 200000, percent: 0.5 },
+    }),
+  );
+
+  model.applyEvent({ type: "agent_start" });
+  model.applyEvent({ type: "message_start", message: { role: "assistant" } });
+  model.applyEvent({
+    type: "message_update",
+    usage: { input: 2000, output: 10, cacheRead: 1000, cacheWrite: 0, totalTokens: 3010, cost: { total: 0.01 } },
+    assistantMessageEvent: { type: "text_delta", delta: "hi" },
+  });
+
+  // Snapshot plus the in-flight message, with context tracked live.
+  assert.equal(model.meta.stats?.input, 2100);
+  assert.equal(model.meta.stats?.output, 30);
+  assert.equal(model.meta.stats?.cacheRead, 1040);
+  assert.equal(model.meta.stats?.totalTokens, 3170);
+  assert.equal(model.meta.stats?.live, true);
+  assert.equal(model.meta.stats?.contextTokens, 3000);
+  assert.equal(model.meta.stats?.contextPercent, 1.5);
+
+  // `message_end` commits the message; a fresh snapshot then replaces it.
+  model.applyEvent({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "hi" }],
+      usage: { input: 2000, output: 12, cacheRead: 1000, cacheWrite: 0, totalTokens: 3012, cost: { total: 0.02 } },
+    },
+  });
+  assert.equal(model.meta.stats?.output, 32);
+  assert.equal(model.meta.stats?.totalTokens, 3172);
+  assert.equal(model.meta.stats?.live, true);
+
+  model.setStats(
+    toUsageStats({
+      tokens: { input: 2100, output: 32, cacheRead: 1040, cacheWrite: 0, total: 3172 },
+      cost: 0.52,
+      contextUsage: { tokens: 3000, contextWindow: 200000, percent: 1.5 },
+    }),
+  );
+  assert.equal(model.meta.stats?.totalTokens, 3172);
+  assert.equal(model.meta.stats?.live, undefined);
+
+  // A second assistant message in the same turn (tool loop) keeps the context
+  // estimate pinned to the newest prompt instead of summing both prompts.
+  model.applyEvent({ type: "message_start", message: { role: "assistant" } });
+  model.applyEvent({
+    type: "message_update",
+    usage: { input: 4000, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 4005, cost: { total: 0 } },
+    assistantMessageEvent: { type: "text_delta", delta: "there" },
+  });
+  assert.equal(model.meta.stats?.contextTokens, 4000);
+  assert.equal(model.meta.stats?.contextPercent, 2);
+  assert.equal(model.meta.stats?.input, 6100);
+
+  // A new session clears the counters entirely.
+  model.reset();
+  assert.equal(model.meta.stats, null);
+});

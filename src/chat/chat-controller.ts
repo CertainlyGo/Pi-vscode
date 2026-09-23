@@ -137,6 +137,11 @@ export class ChatController implements vscode.Disposable {
     await this.#dispatch({ type: "abort" });
   }
 
+  /** Compact the conversation context (command palette / usage bar button). */
+  async compact(): Promise<void> {
+    await this.#compact();
+  }
+
   async restart(): Promise<void> {
     await this.#restartEngine();
   }
@@ -172,6 +177,9 @@ export class ChatController implements vscode.Disposable {
           await engine.abort();
         });
         this.#model.setMeta({ isStreaming: false });
+        break;
+      case "compact":
+        await this.#compact();
         break;
       case "newSession":
         await this.#withEngine(async (engine) => {
@@ -505,7 +513,7 @@ export class ChatController implements vscode.Disposable {
     const engine = this.#engine;
     if (engine?.status !== "ready") return;
     const stats = await engine.getSessionStats();
-    this.#model.setMeta({ stats: toUsageStats(stats) });
+    this.#model.setStats(toUsageStats(stats));
   }
 
   async #refreshModels(): Promise<void> {
@@ -574,6 +582,26 @@ export class ChatController implements vscode.Disposable {
   /* ------------------------------------------------------------------ */
   /* Prompting                                                           */
   /* ------------------------------------------------------------------ */
+
+  /** Compact the context on demand (the usage bar's button). */
+  async #compact(): Promise<void> {
+    const engine = this.#engine;
+    if (engine?.status !== "ready") {
+      this.#model.addNote("warn", "Cannot compact: the pi engine is not running.");
+      return;
+    }
+    if (this.#model.meta.isStreaming || this.#model.meta.isCompacting) {
+      this.#model.addNote("warn", "Wait for the current run to finish before compacting.");
+      return;
+    }
+    try {
+      await engine.compact();
+    } catch (error) {
+      this.#model.addNote("error", `Compaction failed: ${describeError(error)}`);
+      return;
+    }
+    await this.#refreshStats();
+  }
 
   async #sendPrompt(
     text: string,

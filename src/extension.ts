@@ -35,6 +35,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("pi.openProviders", () => controller.openProviders()),
     vscode.commands.registerCommand("pi.abort", () => controller.abort()),
+    vscode.commands.registerCommand("pi.compact", () => controller.compact()),
     vscode.commands.registerCommand("pi.restartEngine", () => controller.restart()),
     vscode.commands.registerCommand("pi.showLogs", () => controller.showLogs()),
     vscode.commands.registerCommand("pi.addSelectionToChat", async () => {

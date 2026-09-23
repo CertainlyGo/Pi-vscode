@@ -222,6 +222,14 @@ export class EngineInstance {
     return this.peer.request({ type: "abort" });
   }
 
+  /** Manually compact the conversation context. */
+  compact(customInstructions?: string): Promise<Record<string, unknown>> {
+    return this.peer.request({
+      type: "compact",
+      ...(customInstructions !== undefined && customInstructions.length > 0 ? { customInstructions } : {}),
+    });
+  }
+
   async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
     const data = await this.#requestData({ type: "clear_queue" });
     return {

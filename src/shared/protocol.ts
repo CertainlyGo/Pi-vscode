@@ -135,6 +135,8 @@ export interface UsageStats {
   readonly contextTokens?: number;
   readonly contextWindow?: number;
   readonly contextPercent?: number;
+  /** True while the numbers include the message currently being streamed. */
+  readonly live?: boolean;
 }
 
 export interface QueueState {
@@ -276,6 +278,7 @@ export type WebviewMessage =
       readonly attachments: readonly Attachment[];
     }
   | { readonly type: "abort" }
+  | { readonly type: "compact" }
   | { readonly type: "newSession" }
   | { readonly type: "switchSession"; readonly path: string }
   | { readonly type: "deleteSession"; readonly path: string }

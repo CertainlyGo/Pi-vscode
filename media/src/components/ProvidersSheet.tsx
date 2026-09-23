@@ -25,6 +25,11 @@ export interface ProvidersSheetProps {
   readonly onOAuthCancel: () => void;
 }
 
+function summarizeModels(models: readonly string[]): string {
+  if (models.length <= 4) return models.join(", ");
+  return `${models.length} models — ${models.slice(0, 4).join(", ")}…`;
+}
+
 type Tab = "key" | "custom";
 
 export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
@@ -117,22 +122,12 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
           <div className="provider-list">
             {props.providers.map((entry) => (
               <div key={entry.id} className="provider-row">
-                <div className="provider-row-main">
-                  <code className="provider-id">{entry.id}</code>
+                <div className="provider-row-head">
+                  <code className="provider-id" title={entry.id}>
+                    {entry.id}
+                  </code>
                   <span className={`provider-badge ${entry.source}`}>{entry.type}</span>
-                  <span className="provider-masked" title={entry.masked}>
-                    {entry.masked}
-                  </span>
-                </div>
-                <div className="provider-row-meta">
-                  {entry.baseUrl !== undefined && (
-                    <span className="provider-base" title={entry.baseUrl}>
-                      {entry.baseUrl}
-                    </span>
-                  )}
-                  {entry.models.length > 0 && (
-                    <span className="provider-models">{entry.models.length} models</span>
-                  )}
+                  <span className="provider-source">{entry.source}</span>
                   <button
                     type="button"
                     className="icon-btn danger"
@@ -142,6 +137,30 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
                   >
                     <Icon name="trash" size={13} />
                   </button>
+                </div>
+                <div className="provider-row-body">
+                  <div className="provider-line">
+                    <span className="provider-line-label">key</span>
+                    <span className="provider-masked" title={entry.masked}>
+                      {entry.masked}
+                    </span>
+                  </div>
+                  {entry.baseUrl !== undefined && entry.baseUrl.length > 0 && (
+                    <div className="provider-line">
+                      <span className="provider-line-label">url</span>
+                      <span className="provider-base" title={entry.baseUrl}>
+                        {entry.baseUrl}
+                      </span>
+                    </div>
+                  )}
+                  {entry.models.length > 0 && (
+                    <div className="provider-line">
+                      <span className="provider-line-label">models</span>
+                      <span className="provider-models" title={entry.models.join(", ")}>
+                        {summarizeModels(entry.models)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

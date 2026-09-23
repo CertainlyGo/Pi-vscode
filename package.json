@@ -72,6 +72,12 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "pi.compact",
+        "title": "Compact Context",
+        "category": "pi",
+        "icon": "$(collapse-all)"
+      },
+      {
         "command": "pi.addSelectionToChat",
         "title": "Add Selection to pi",
         "category": "pi"
@@ -109,23 +115,6 @@
         {
           "command": "pi.focusChat",
           "group": "navigation@1"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "pi.newSession",
-          "when": "view == pi.chat",
-          "group": "navigation@1"
-        },
-        {
-          "command": "pi.openProviders",
-          "when": "view == pi.chat",
-          "group": "navigation@2"
-        },
-        {
-          "command": "pi.restartEngine",
-          "when": "view == pi.chat",
-          "group": "navigation@3"
         }
       ],
       "editor/context": [

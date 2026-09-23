@@ -117,6 +117,7 @@ const expectedCommands = [
   "pi.focusChat",
   "pi.openProviders",
   "pi.abort",
+  "pi.compact",
   "pi.restartEngine",
   "pi.showLogs",
   "pi.addSelectionToChat",

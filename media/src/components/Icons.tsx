@@ -28,6 +28,7 @@ export type IconName =
   | "refresh"
   | "chip"
   | "key"
+  | "compact"
   | "arrow-down";
 
 const PATHS: Record<IconName, string> = {
@@ -58,6 +59,7 @@ const PATHS: Record<IconName, string> = {
   refresh: "M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4",
   chip: "M8 8h8v8H8zM4 10h4M4 14h4M16 10h4M16 14h4M10 4v4M14 4v4M10 16v4M14 16v4",
   key: "M14.5 4a4.5 4.5 0 0 0-4.3 5.8L3 17v3h3l1.2-1.2 1.3 1.3 1.4-1.4-1.3-1.3 1.3-1.3 1.3 1.3 1.4-1.4-1.3-1.3.9-.9A4.5 4.5 0 1 0 14.5 4zm1.2 3.6h.01",
+  compact: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
   "arrow-down": "M12 5v14M6 13l6 6 6-6",
 };
 
