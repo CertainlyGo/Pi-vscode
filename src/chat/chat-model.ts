@@ -90,6 +90,11 @@ function addCounters(a: UsageCounters, b: UsageCounters): UsageCounters {
   };
 }
 
+/** Everything the model was charged for on one request. */
+function promptTokensOf(counters: UsageCounters): number {
+  return counters.input + counters.cacheRead + counters.cacheWrite;
+}
+
 function hasUsage(counters: UsageCounters): boolean {
   return (
     counters.input > 0 ||
@@ -242,6 +247,12 @@ export class ChatModel {
   #streamingUsage: UsageCounters = ZERO_COUNTERS;
   /** Prompt tokens of the most recent message, used to estimate context live. */
   #lastPromptTokens = 0;
+  /**
+   * Usage of the single most recent request. Unlike {@link #baseStats} and
+   * {@link #committedUsage} this is never summed, because pi's TUI derives its
+   * cache hit rate from the latest request alone.
+   */
+  #lastRequest: UsageCounters = ZERO_COUNTERS;
   readonly #toolItemByCallId = new Map<string, string>();
   /** pi request id -> bash item id, for `bash_execution_update` events. */
   readonly #bashItemByRequestId = new Map<string, string>();
@@ -277,6 +288,8 @@ export class ChatModel {
     this.#committedUsage = ZERO_COUNTERS;
     this.#streamingUsage = ZERO_COUNTERS;
     this.#lastPromptTokens = 0;
+    // `#lastRequest` deliberately survives: a session snapshot carries totals
+    // only, so dropping it would blank the cache hit rate every turn.
     this.#emitStats();
   }
 
@@ -333,6 +346,7 @@ export class ChatModel {
     this.#committedUsage = ZERO_COUNTERS;
     this.#streamingUsage = ZERO_COUNTERS;
     this.#lastPromptTokens = 0;
+    this.#lastRequest = ZERO_COUNTERS;
     this.#emit({ type: "items", items: this.#items });
     this.#emitStats();
     this.#updateBashRunning();
@@ -397,6 +411,7 @@ export class ChatModel {
     const items: ChatItem[] = [];
     const toolItems = new Map<string, ToolItem>();
     let counter = 0;
+    let lastRequest: UsageCounters | null = null;
     const nextId = (prefix: string): string => `${prefix}h${++counter}`;
 
     for (const message of messages) {
@@ -413,6 +428,10 @@ export class ChatModel {
         continue;
       }
       if (role === "assistant") {
+        // The last assistant message carries the most recent request's usage,
+        // which is what the cache hit rate is derived from.
+        const usage = parseMessageUsage(message["usage"]);
+        if (usage !== null && promptTokensOf(usage) > 0) lastRequest = usage;
         const content = message["content"];
         items.push({
           kind: "assistant",
@@ -503,6 +522,10 @@ export class ChatModel {
     this.#toolItemByCallId.clear();
     this.#bashItemByRequestId.clear();
     this.#pendingUserEcho.length = 0;
+    if (lastRequest !== null) {
+      this.#lastRequest = lastRequest;
+      this.#emitStats();
+    }
     this.#emit({ type: "items", items: this.#items });
     this.#updateBashRunning();
   }
@@ -826,12 +849,15 @@ export class ChatModel {
   }
 
   /**
-   * Remember the newest prompt size. In a tool loop a turn spans several
-   * assistant messages, and only the latest prompt reflects the context.
+   * Remember the newest prompt. In a tool loop a turn spans several assistant
+   * messages, and only the latest prompt reflects the context — pi's TUI reads
+   * its cache hit rate off that same latest request.
    */
   #rememberPrompt(usage: UsageCounters): void {
-    const prompt = usage.input + usage.cacheRead + usage.cacheWrite;
-    if (prompt > 0) this.#lastPromptTokens = prompt;
+    const prompt = promptTokensOf(usage);
+    if (prompt <= 0) return;
+    this.#lastPromptTokens = prompt;
+    this.#lastRequest = usage;
   }
 
   /** Merge the session snapshot with the live counters and publish it. */
@@ -855,6 +881,8 @@ export class ChatModel {
       contextPercent = Math.min(100, (promptTokens / contextWindow) * 100);
     }
 
+    const lastPrompt = promptTokensOf(this.#lastRequest);
+
     this.setMeta({
       stats: {
         input: (base?.input ?? 0) + live.input,
@@ -867,6 +895,12 @@ export class ChatModel {
         ...(contextTokens !== undefined ? { contextTokens } : {}),
         ...(contextWindow !== undefined ? { contextWindow } : {}),
         ...(contextPercent !== undefined ? { contextPercent } : {}),
+        ...(lastPrompt > 0
+          ? {
+              cacheHitRate: (this.#lastRequest.cacheRead / lastPrompt) * 100,
+              lastPromptTokens: lastPrompt,
+            }
+          : {}),
         ...(liveActive ? { live: true } : {}),
       },
     });

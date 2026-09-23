@@ -19,7 +19,7 @@
 │ [ @src/a.ts × ]                       │  attachments
 │ Ask pi…  @ files  / commands  ! shell  │  composer
 │ [✦ deepseek-v4.1-flash ▾]            │  model picker
-│ ↑12.3k ↓4.5k ⚡58% 34% $0.12 [Compact] │  usage bar + 手动 compact
+│ ↑12.3k ↓4.5k R45.1k W2.3k CH96.7% 34% $0.12 [Compact] │  usage bar + 手动 compact
 └──────────────────────────────────────┘
 ```
 
@@ -35,7 +35,7 @@
 - **会话管理**：左上角标题随当前会话变化（显式名称 → 持久化会话标题 → 首条用户消息），历史列表、切换、重命名、删除，以及从任意用户消息「Branch a new session from this message」按 pi 的 fork 语义开新分支（分支按钮常驻可见）。
 - **模型与思考**：按 provider 分组的模型选择器 + 思考等级切换，来自 pi 自己的模型清单。
 - **供应商与模型源管理**：内置面板可直接增删 API Key（含自定义网关 baseUrl 覆盖）、新建 OpenAI/Anthropic/Google 兼容的自定义模型源（provider id + api + baseUrl + 模型列表），以及复用 pi 自身 PKCE 流程的订阅登录（Codex / Claude Pro·Max / Copilot / Grok / OpenRouter / Kimi / Meta / Radius）。每次保存都跑 `pi auth check` 验证，并自动重启引擎刷新模型列表。
-- **用量实时统计 + 主动 compact**：composer 上方常驻一条用量栏 —— `↑` 上传（prompt）token、`↓` 下载（completion）token、`⚡` 缓存命中率（cacheRead / prompt）、上下文占用百分比与进度条（≥60% 变黄、≥85% 变红）、会话费用；流式过程中直接消费 `message_update.usage` 增量刷新，上下文占用用当前 prompt token 实时估算。右侧 `Compact` 按钮调用 pi 的 `compact` RPC 主动压缩上下文（运行中自动禁用），结果以压缩卡片渲染在对话里。
+- **用量实时统计 + 主动 compact**：composer 上方常驻一条用量栏，与 pi TUI footer 的读法完全对齐 —— `↑` 新 input token、`↓` output token、`R` cacheRead、`W` cacheWrite、`CH` 最近一次请求的缓存命中率（`cacheRead / 该次请求的 prompt`，单次而非会话平均），五项各算各的、互不相加；另附上下文占用百分比与进度条（≥60% 变黄、≥85% 变红）和会话费用。流式过程中直接消费 `message_update.usage` 增量刷新，上下文占用用当前 prompt token 实时估算。右侧 `Compact` 按钮调用 pi 的 `compact` RPC 主动压缩上下文（运行中自动禁用），结果以压缩卡片渲染在对话里。
 - **扩展 UI 协议**：pi 扩展的 `select / confirm / input / editor` 对话框与 `notify` 通知在 webview 内渲染。
 - **信任门**：检测到 `.pi/*`、项目 skills 等需要信任的资源时先询问，决定写回 pi 自己的 `trust.json`，与 TUI 共享。
 - **主题跟随**：全部使用 `--vscode-*` 变量，明暗主题自动适配。

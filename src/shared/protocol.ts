@@ -135,6 +135,14 @@ export interface UsageStats {
   readonly contextTokens?: number;
   readonly contextWindow?: number;
   readonly contextPercent?: number;
+  /**
+   * Cache hit rate of the most recent request (`cacheRead / prompt tokens` of
+   * that request), matching pi's TUI `CH` readout. Deliberately *not* a
+   * session-cumulative average.
+   */
+  readonly cacheHitRate?: number;
+  /** Prompt tokens of the most recent request (`input + cacheRead + cacheWrite`). */
+  readonly lastPromptTokens?: number;
   /** True while the numbers include the message currently being streamed. */
   readonly live?: boolean;
 }

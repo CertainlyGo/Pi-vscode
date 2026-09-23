@@ -859,6 +859,12 @@ button {
 .usage-glyph {
   color: var(--vscode-charts-yellow, #d29922);
 }
+.usage-glyph.read {
+  color: var(--vscode-charts-purple, #b180d7);
+}
+.usage-glyph.write {
+  color: var(--vscode-charts-orange, #d18616);
+}
 .usage-value {
   color: var(--vscode-foreground);
 }

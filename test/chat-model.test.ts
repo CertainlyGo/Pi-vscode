@@ -267,6 +267,83 @@ test("merges live streaming usage into the session snapshot", () => {
   assert.equal(model.meta.stats, null);
 });
 
+test("reports the latest request's cache hit rate, not a session average", () => {
+  const { model } = collect();
+  model.setStats(
+    toUsageStats({
+      tokens: { input: 10_000, output: 500, cacheRead: 0, cacheWrite: 20_000, total: 30_500 },
+      cost: 0,
+    }),
+  );
+  // A session snapshot describes totals only, so no single-request rate exists.
+  assert.equal(model.meta.stats?.cacheHitRate, undefined);
+
+  model.applyEvent({ type: "message_start", message: { role: "assistant" } });
+  model.applyEvent({
+    type: "message_update",
+    usage: { input: 200, output: 10, cacheRead: 29_000, cacheWrite: 300, totalTokens: 29_510, cost: { total: 0 } },
+    assistantMessageEvent: { type: "text_delta", delta: "hi" },
+  });
+
+  // 29_000 / (200 + 29_000 + 300): the newest request alone, cold first turn ignored.
+  assert.equal(model.meta.stats?.cacheHitRate, (29_000 / 29_500) * 100);
+  assert.equal(model.meta.stats?.lastPromptTokens, 29_500);
+  // The buckets stay raw; nothing is folded into another counter.
+  assert.equal(model.meta.stats?.input, 10_200);
+  assert.equal(model.meta.stats?.output, 510);
+  assert.equal(model.meta.stats?.cacheRead, 29_000);
+  assert.equal(model.meta.stats?.cacheWrite, 20_300);
+
+  // A fresh snapshot replaces the totals but keeps the latest-request readout.
+  model.setStats(
+    toUsageStats({
+      tokens: { input: 10_200, output: 510, cacheRead: 29_000, cacheWrite: 20_300, total: 60_010 },
+      cost: 0,
+    }),
+  );
+  assert.equal(model.meta.stats?.cacheHitRate, (29_000 / 29_500) * 100);
+  assert.equal(model.meta.stats?.lastPromptTokens, 29_500);
+
+  // A second request in the same turn moves the readout to that request.
+  model.applyEvent({ type: "message_start", message: { role: "assistant" } });
+  model.applyEvent({
+    type: "message_update",
+    usage: { input: 4_000, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 4_005, cost: { total: 0 } },
+    assistantMessageEvent: { type: "text_delta", delta: "there" },
+  });
+  assert.equal(model.meta.stats?.cacheHitRate, 0);
+  assert.equal(model.meta.stats?.lastPromptTokens, 4_000);
+
+  // History reload seeds the readout from the newest persisted assistant message.
+  // `#refreshAll` runs this alongside the stats snapshot, in either order.
+  const { model: reloaded } = collect();
+  reloaded.setStats(
+    toUsageStats({
+      tokens: { input: 150, output: 10, cacheRead: 1_850, cacheWrite: 0, total: 2_010 },
+      cost: 0,
+    }),
+  );
+  assert.equal(reloaded.meta.stats?.cacheHitRate, undefined);
+  reloaded.setHistory([
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "old" }],
+      usage: { input: 100, output: 5, cacheRead: 900, cacheWrite: 0, totalTokens: 1_005 },
+    },
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "new" }],
+      usage: { input: 50, output: 5, cacheRead: 950, cacheWrite: 0, totalTokens: 1_005 },
+    },
+  ]);
+  assert.equal(reloaded.meta.stats?.cacheHitRate, (950 / 1_000) * 100);
+  assert.equal(reloaded.meta.stats?.lastPromptTokens, 1_000);
+
+  // A new session clears it.
+  model.reset();
+  assert.equal(model.meta.stats, null);
+});
+
 test("renders direct shell runs and streams their output", () => {
   const { messages, model } = collect();
   const id = model.beginBash("ls -la", "req-1");
