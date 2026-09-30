@@ -14,10 +14,12 @@ import { getAgentDir, deleteSession, listSessions } from "../sessions/session-st
 import { needsTrust, readTrustDecision, writeTrustDecision } from "../sessions/trust";
 import { ProviderService } from "../providers/provider-service";
 import type { OAuthProviderId } from "../providers/oauth";
+import { DEFAULT_THINKING_LEVEL } from "../shared/provider-catalog";
 import type {
   Attachment,
   DialogOption,
   DialogRequest,
+  DiscoveredModel,
   NoteLevel,
   OAuthPromptView,
   SlashCommand,
@@ -237,6 +239,9 @@ export class ChatController implements vscode.Disposable {
           await engine.setModel(message.provider, message.modelId);
           await this.#refreshState();
           await this.#refreshStats();
+          // The available depths depend on the model, so refresh them here too:
+          // a freshly selected reasoning model must expose its level picker.
+          await this.#refreshThinking();
         });
         break;
       case "setThinking":
@@ -269,6 +274,15 @@ export class ChatController implements vscode.Disposable {
         break;
       case "removeCredential":
         await this.#removeCredential(message.provider);
+        break;
+      case "detectModels":
+        await this.#runDiscovery(message.provider);
+        break;
+      case "setModelReasoning":
+        await this.#setModelReasoning(message.provider, message.modelId, message.reasoning);
+        break;
+      case "setModelThinking":
+        await this.#setModelThinking(message.provider, message.modelId, message.level);
         break;
       case "oauthLogin":
         await this.#oauthLogin(message.provider);
@@ -777,6 +791,8 @@ export class ChatController implements vscode.Disposable {
       const result = await this.#providers.addApiKey(provider, key, baseUrl);
       this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
       await this.#afterProviderChange();
+      // Detect everything the new credential can use, then auto-register it.
+      await this.#runDiscovery(provider);
     } catch (error) {
       this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
     }
@@ -801,6 +817,7 @@ export class ChatController implements vscode.Disposable {
       });
       this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
       await this.#afterProviderChange();
+      await this.#runDiscovery(message.id);
     } catch (error) {
       this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
     }
@@ -810,7 +827,88 @@ export class ChatController implements vscode.Disposable {
     try {
       const result = await this.#providers.remove(provider);
       this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      this.#view.post({ type: "discovered", provider, models: [], source: "none" });
       await this.#afterProviderChange();
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  /**
+   * Detect every model a provider can use and register the ones pi does not
+   * know yet. pi's live catalog wins; a raw `<baseUrl>/models` probe is the
+   * fallback that makes custom endpoints usable without hand-typing ids.
+   */
+  async #runDiscovery(provider: string): Promise<void> {
+    this.#view.post({ type: "providerStatus", ok: true, message: `Detecting ${provider} models…`, busy: true });
+    try {
+      const catalog = await this.#catalogModels(provider);
+      const outcome = await this.#providers.discoverModels(provider, { catalogModels: catalog });
+      this.#view.post({ type: "discovered", provider, models: outcome.models, source: outcome.source });
+      this.#view.post({
+        type: "providerStatus",
+        ok: outcome.models.length > 0,
+        message: outcome.message,
+        busy: false,
+      });
+      if (outcome.source === "endpoint" && this.#activeWorkspace !== undefined) {
+        // Newly written models only exist after a restart.
+        await this.#restartEngine();
+        await this.#refreshModels();
+      }
+      await this.#publishProviders();
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  /** Models pi already exposes for a provider (authoritative, has reasoning). */
+  async #catalogModels(provider: string): Promise<DiscoveredModel[]> {
+    const engine = this.#engine;
+    if (engine?.status !== "ready") return [];
+    const models = await engine.listModels();
+    const result: DiscoveredModel[] = [];
+    for (const raw of models) {
+      if (str(raw["provider"]) !== provider) continue;
+      const id = str(raw["id"]);
+      if (id === undefined) continue;
+      const name = str(raw["name"]);
+      result.push({
+        id,
+        ...(name !== undefined ? { name } : {}),
+        reasoning: raw["reasoning"] === true,
+        thinkingLevel: DEFAULT_THINKING_LEVEL,
+      });
+    }
+    return result;
+  }
+
+  async #setModelReasoning(provider: string, modelId: string, reasoning: boolean): Promise<void> {
+    try {
+      const result = await this.#providers.setModelReasoning(provider, modelId, reasoning);
+      this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      if (this.#activeWorkspace !== undefined) {
+        await this.#restartEngine();
+        await this.#refreshModels();
+        await this.#refreshThinking();
+      }
+      await this.#runDiscovery(provider);
+    } catch (error) {
+      this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
+    }
+  }
+
+  async #setModelThinking(provider: string, modelId: string, level: string): Promise<void> {
+    try {
+      const result = await this.#providers.setThinkingLevel(provider, modelId, level);
+      this.#view.post({ type: "providerStatus", ok: result.ok, message: result.message, busy: false });
+      const active = this.#model.meta.model;
+      if (active !== null && active.provider === provider && active.id === modelId) {
+        await this.#withEngine(async (engine) => {
+          await engine.setThinkingLevel(level);
+          await this.#refreshState();
+        });
+      }
     } catch (error) {
       this.#view.post({ type: "providerStatus", ok: false, message: describeError(error), busy: false });
     }

@@ -1,15 +1,15 @@
 import type { JSX } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { Attachment, ChatItem, Meta, PromptMode } from "../../src/shared/protocol";
+import type { Attachment, ChatItem, DialogRequest, Meta, OAuthPromptView, PromptMode } from "../../src/shared/protocol";
 import { post } from "./vscode";
 import type { Store } from "./store";
+import { firstLine } from "../../src/shared/text";
 import { Composer } from "./components/Composer";
 import type { CapabilitiesTab } from "./components/CapabilitiesSheet";
 import { CapabilitiesSheet } from "./components/CapabilitiesSheet";
 import { DialogHost } from "./components/DialogHost";
 import { Icon } from "./components/Icons";
 import { MessageItem } from "./components/MessageItem";
-import { OAuthDialog } from "./components/OAuthDialog";
 import { SessionPicker } from "./components/Pickers";
 import { ProvidersSheet } from "./components/ProvidersSheet";
 import { Toasts } from "./components/Toasts";
@@ -33,6 +33,7 @@ export function App({ store }: AppProps): JSX.Element {
     oauthAvailable,
     providersOpen,
     providerStatus,
+    discovered,
     oauthPrompt,
     oauthMessage,
     skills,
@@ -248,7 +249,19 @@ export function App({ store }: AppProps): JSX.Element {
         onOpenCapabilities={onOpenCapabilities}
       />
 
-      <DialogHost dialog={dialog} onRespond={(id, response) => post({ type: "dialogResponse", id, response })} />
+      <DialogHost
+        dialog={oauthPrompt !== null ? oauthToDialog(oauthPrompt) : dialog}
+        onRespond={(id, response) => {
+          // OAuth prompts share the one dialog component; route them back to the
+          // sign-in flow instead of pi's extension dialog channel.
+          if (oauthPrompt !== null) {
+            const value = response["cancelled"] === true ? null : (response["value"] as string | undefined) ?? null;
+            post({ type: "oauthPromptResponse", value });
+          } else {
+            post({ type: "dialogResponse", id, response });
+          }
+        }}
+      />
       {providersOpen && (
         <ProvidersSheet
           providers={providers}
@@ -261,6 +274,14 @@ export function App({ store }: AppProps): JSX.Element {
           }
           onAddCustom={(input) => post({ type: "addCustomProvider", ...input })}
           onRemove={(provider) => post({ type: "removeCredential", provider })}
+          discovered={discovered}
+          onDetect={(provider) => post({ type: "detectModels", provider })}
+          onSetReasoning={(provider, modelId, reasoning) =>
+            post({ type: "setModelReasoning", provider, modelId, reasoning })
+          }
+          onSetThinking={(provider, modelId, level) =>
+            post({ type: "setModelThinking", provider, modelId, level })
+          }
           onOAuthLogin={(provider) => post({ type: "oauthLogin", provider })}
           onOAuthCancel={() => post({ type: "oauthCancel" })}
         />
@@ -281,10 +302,6 @@ export function App({ store }: AppProps): JSX.Element {
           onClose={() => store.closeCapabilities()}
         />
       )}
-      <OAuthDialog
-        prompt={oauthPrompt}
-        onRespond={(value) => post({ type: "oauthPromptResponse", value })}
-      />
       <Toasts toasts={toasts} onDismiss={(id) => store.dismissToast(id)} />
     </div>
   );
@@ -365,9 +382,25 @@ function deriveSessionTitle(meta: Meta, items: readonly ChatItem[]): string {
   if (active !== undefined && active.name.trim().length > 0) return active.name;
   for (const item of items) {
     if (item.kind !== "user") continue;
-    const firstLine = (item.text.trim().split(/\r?\n/, 1)[0] ?? "").trim();
-    if (firstLine.length === 0) continue;
-    return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+    const line = firstLine(item.text.trim()).trim();
+    if (line.length === 0) continue;
+    return line.length > 60 ? `${line.slice(0, 60)}…` : line;
   }
   return "New session";
+}
+
+/**
+ * Present an OAuth prompt through the shared {@link DialogHost}. The prompt id
+ * is derived from the message so a new prompt resets the input field.
+ */
+function oauthToDialog(prompt: OAuthPromptView): DialogRequest {
+  return {
+    id: `oauth:${prompt.message}`,
+    method: prompt.type === "select" ? "select" : "input",
+    title: "Sign in",
+    message: prompt.message,
+    ...(prompt.placeholder !== undefined ? { placeholder: prompt.placeholder } : {}),
+    ...(prompt.options !== undefined ? { options: prompt.options } : {}),
+    ...(prompt.type === "secret" ? { masked: true } : {}),
+  };
 }

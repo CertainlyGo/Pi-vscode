@@ -3,7 +3,7 @@
   "displayName": "pi for VS Code",
   "description": "pi coding agent inside VS Code — a Codex / Claude Code style chat sidebar with streaming replies, tool cards, inline diffs and session history.",
   "version": "0.1.0",
-  "publisher": "pi-local",
+  "publisher": "CertainlyGo",
   "license": "MIT",
   "private": true,
   "repository": {

@@ -1,6 +1,8 @@
 import type {
   ChatItem,
   DialogRequest,
+  DiscoveredModel,
+  DiscoverySource,
   HostMessage,
   Meta,
   OAuthEventView,
@@ -24,6 +26,13 @@ export interface ProviderStatus {
   readonly busy: boolean;
 }
 
+/** Models detected for one provider after a credential was saved. */
+export interface DiscoveryState {
+  readonly provider: string;
+  readonly models: readonly DiscoveredModel[];
+  readonly source: DiscoverySource;
+}
+
 export interface State {
   readonly meta: Meta;
   readonly items: readonly ChatItem[];
@@ -35,6 +44,7 @@ export interface State {
   readonly oauthAvailable: boolean;
   readonly providersOpen: boolean;
   readonly providerStatus: ProviderStatus | null;
+  readonly discovered: DiscoveryState | null;
   readonly oauthPrompt: OAuthPromptView | null;
   readonly oauthMessage: string | null;
   readonly skills: readonly SkillInfo[];
@@ -64,6 +74,7 @@ const INITIAL: State = {
   oauthAvailable: false,
   providersOpen: false,
   providerStatus: null,
+  discovered: null,
   oauthPrompt: null,
   oauthMessage: null,
   skills: [],
@@ -136,6 +147,12 @@ export class Store {
         this.#set({
           ...this.#state,
           providerStatus: { ok: message.ok, message: message.message, busy: message.busy },
+        });
+        return;
+      case "discovered":
+        this.#set({
+          ...this.#state,
+          discovered: { provider: message.provider, models: message.models, source: message.source },
         });
         return;
       case "oauthPrompt":

@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { useMemo, useState } from "react";
 import type { ToolItem } from "../../../src/shared/protocol";
+import { firstLine } from "../../../src/shared/text";
 import { DiffView } from "./DiffView";
 import { Icon } from "./Icons";
 import type { IconName } from "./Icons";
@@ -20,10 +21,6 @@ interface ToolMeta {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
-}
-
-function firstLine(text: string): string {
-  return text.split(/\r?\n/, 1)[0] ?? text;
 }
 
 function toolMeta(item: ToolItem): ToolMeta {

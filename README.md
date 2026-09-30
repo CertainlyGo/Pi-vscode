@@ -48,6 +48,7 @@
 - **会话管理**：左上角标题随当前会话变化（显式名称 → 持久化会话标题 → 首条用户消息），历史列表、切换、重命名、删除，以及从任意用户消息「Branch a new session from this message」按 pi 的 fork 语义开新分支（分支按钮常驻可见）。
 - **模型与思考**：按 provider 分组的模型选择器 + 思考等级切换，来自 pi 自己的模型清单。
 - **供应商与模型源管理**：内置面板可直接增删 API Key（含自定义网关 baseUrl 覆盖）、新建 OpenAI/Anthropic/Google 兼容的自定义模型源（provider id + api + baseUrl + 模型列表），以及复用 pi 自身 PKCE 流程的订阅登录（Codex / Claude Pro·Max / Copilot / Grok / OpenRouter / Kimi / Meta / Radius）。每次保存都跑 `pi auth check` 验证，并自动重启引擎刷新模型列表。
+- **模型自动发现 + 推理深度**：保存 API Key 后立即请求该 provider 的 `<baseUrl>/models`，把该凭据可用的**全部**模型并入 `models.json` —— 内置 provider 中 pi 目录已收录的模型保留目录自带元数据（reasoning/上下文/价格），只写入目录之外的模型；自定义网关则全量写入。识别出的推理模型会自动在 `~/.pi/agent/settings.json` 的 `modelThinkingLevels` 里落一个默认 `medium` 推理深度，面板内可就地勾选 reasoning 或改深度（off/minimal/low/medium/high/xhigh/max），选中当前模型时实时下发 `set_thinking_level`。
 - **用量实时统计 + 主动 compact**：composer 上方常驻一条用量栏，与 pi TUI footer 的读法完全对齐 —— `↑` 新 input token、`↓` output token、`R` cacheRead、`W` cacheWrite、`CH` 最近一次请求的缓存命中率（`cacheRead / 该次请求的 prompt`，单次而非会话平均），五项各算各的、互不相加；另附上下文占用百分比与进度条（≥60% 变黄、≥85% 变红）和会话费用。流式过程中直接消费 `message_update.usage` 增量刷新，上下文占用用当前 prompt token 实时估算。右侧 `Compact` 按钮调用 pi 的 `compact` RPC 主动压缩上下文（运行中自动禁用），结果以压缩卡片渲染在对话里。
 - **扩展 UI 协议**：pi 扩展的 `select / confirm / input / editor` 对话框与 `notify` 通知在 webview 内渲染。
 - **信任门**：检测到 `.pi/*`、项目 skills 等需要信任的资源时先询问，决定写回 pi 自己的 `trust.json`，与 TUI 共享。
@@ -128,9 +129,11 @@ src/
     trust.ts                # 项目信任检测与读写
   providers/
     auth-store.ts           # auth.json 读写 + pi auth check
-    models-config.ts        # models.json 合并写（自定义模型源）
+    models-config.ts        # models.json 合并写（自定义模型源 + 自动发现的模型）
+    model-discovery.ts      # 探测 <baseUrl>/models，解析三类返回，推断 reasoning
+    settings-config.ts      # settings.json 的 modelThinkingLevels 合并写
     oauth.ts                # pi-ai PKCE loader 桥接
-    provider-service.ts     # 凭据/模型源编排
+    provider-service.ts     # 凭据/模型源编排 + 模型发现与推理深度
   shared/protocol.ts        # host <-> webview 契约
   shared/provider-catalog.ts# provider/API 目录（host 与 webview 共用）
 media/src/                  # React webview（components/ + styles.css）
@@ -141,7 +144,7 @@ media/src/                  # React webview（components/ + styles.css）
 ```bash
 npm install
 npm run typecheck     # tsc --noEmit（strict + noUncheckedIndexedAccess）
-npm test              # 13 个用例：ChatModel 事件归约、diff 解析、auth/models 文件读写
+npm test              # 25 个用例：ChatModel 事件归约、diff 解析、auth/models/settings 文件读写、模型发现
 npm run build         # esbuild 打两个包：dist/extension.js、dist/webview.js+css
 npm run watch         # 增量构建
 npm run smoke         # 用真实 pi 走 启动 → get_state/模型/命令 → 停止

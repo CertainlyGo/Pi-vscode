@@ -68,6 +68,7 @@ export function DialogHost({ dialog, onRespond }: DialogHostProps): JSX.Element 
             <input
               autoFocus
               className="dialog-input"
+              type={dialog.masked === true ? "password" : "text"}
               placeholder={dialog.placeholder ?? ""}
               value={value}
               onChange={(event) => setValue(event.target.value)}

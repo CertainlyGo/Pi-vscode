@@ -204,6 +204,18 @@ export interface ProviderInfo {
   readonly models: readonly string[];
 }
 
+/** One model detected for a provider after a credential was saved. */
+export interface DiscoveredModel {
+  readonly id: string;
+  readonly name?: string;
+  /** Model supports a reasoning/thinking budget. */
+  readonly reasoning: boolean;
+  /** Effective reasoning depth from `modelThinkingLevels`, default `medium`. */
+  readonly thinkingLevel: string;
+}
+
+export type DiscoverySource = "catalog" | "endpoint" | "none";
+
 export interface SkillInfo {
   readonly name: string;
   readonly description?: string;
@@ -248,6 +260,8 @@ export interface DialogRequest {
   readonly options?: readonly DialogOption[];
   readonly placeholder?: string;
   readonly defaultValue?: string;
+  /** Render the input as a password field (OAuth secrets). */
+  readonly masked?: boolean;
   /** Set when the request comes from a third-party pi extension. */
   readonly source?: string;
 }
@@ -285,6 +299,12 @@ export type HostMessage =
       readonly oauthAvailable: boolean;
     }
   | { readonly type: "providerStatus"; readonly ok: boolean; readonly message: string; readonly busy: boolean }
+  | {
+      readonly type: "discovered";
+      readonly provider: string;
+      readonly models: readonly DiscoveredModel[];
+      readonly source: DiscoverySource;
+    }
   | { readonly type: "oauthPrompt"; readonly prompt: OAuthPromptView | null }
   | { readonly type: "oauthEvent"; readonly event: OAuthEventView }
   | { readonly type: "attach"; readonly attachment: Attachment }
@@ -338,6 +358,19 @@ export type WebviewMessage =
       readonly models: readonly string[];
     }
   | { readonly type: "removeCredential"; readonly provider: string }
+  | { readonly type: "detectModels"; readonly provider: string }
+  | {
+      readonly type: "setModelReasoning";
+      readonly provider: string;
+      readonly modelId: string;
+      readonly reasoning: boolean;
+    }
+  | {
+      readonly type: "setModelThinking";
+      readonly provider: string;
+      readonly modelId: string;
+      readonly level: string;
+    }
   | { readonly type: "oauthLogin"; readonly provider: string }
   | { readonly type: "oauthCancel" }
   | { readonly type: "oauthPromptResponse"; readonly value: string | null }

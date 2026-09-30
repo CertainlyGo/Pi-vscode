@@ -1,5 +1,6 @@
 import type { JSX } from "react";
 import type { Meta, UsageStats } from "../../../src/shared/protocol";
+import { formatTokens } from "../format";
 import { Icon } from "./Icons";
 
 export interface UsageBarProps {
@@ -156,10 +157,4 @@ function contextTitle(stats: UsageStats | null): string {
   ]
     .filter((line) => line.length > 0)
     .join("\n");
-}
-
-export function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(Math.round(value));
 }

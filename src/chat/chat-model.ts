@@ -11,6 +11,7 @@ import type {
   UsageStats,
 } from "../shared/protocol";
 import { EMPTY_META } from "../shared/protocol";
+import { firstLine } from "../shared/text";
 
 /* ------------------------------------------------------------------ */
 /* Small helpers                                                       */
@@ -1048,8 +1049,4 @@ interface AssistantItemInternal {
   streaming: boolean;
   model?: string;
   error?: string;
-}
-
-function firstLine(text: string): string {
-  return text.split(/\r?\n/, 1)[0] ?? text;
 }

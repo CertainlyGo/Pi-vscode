@@ -10,6 +10,7 @@ import type {
   UserItem,
 } from "../../../src/shared/protocol";
 import { copyText } from "../clipboard";
+import { formatTokens } from "../format";
 import { renderMarkdown } from "../markdown";
 import { Icon } from "./Icons";
 import type { IconName } from "./Icons";
@@ -179,15 +180,6 @@ function BashMessage({ item, onOpenFile }: { item: BashItem; onOpenFile: (path: 
   );
 }
 
-function formatTokens(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
-}
-
-/**
- * Debounce a rapidly changing value so markdown is not re-parsed on every
- * streamed token. Pass `interval = 0` to use the value immediately.
- */
 function useThrottled(value: string, interval: number): string {
   const [throttled, setThrottled] = useState(value);
   useEffect(() => {

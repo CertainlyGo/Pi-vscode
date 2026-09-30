@@ -4,15 +4,6 @@ import { encodeRecord } from "./rpc-frames";
 export const DIALOG_UI_METHODS = ["select", "confirm", "input", "editor"] as const;
 export type DialogUiMethod = (typeof DIALOG_UI_METHODS)[number];
 
-/** Fire-and-forget UI methods: the client may render them or ignore them. */
-export const FIRE_AND_FORGET_UI_METHODS = [
-  "notify",
-  "setStatus",
-  "setWidget",
-  "setTitle",
-  "set_editor_text",
-] as const;
-
 export interface ExtensionUiRequest {
   readonly type: "extension_ui_request";
   readonly id: string;

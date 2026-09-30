@@ -1,9 +1,14 @@
 import type { JSX } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProviderInfo } from "../../../src/shared/protocol";
-import { API_FORMATS, KNOWN_PROVIDERS, OAUTH_PROVIDERS } from "../../../src/shared/provider-catalog";
+import {
+  API_FORMATS,
+  KNOWN_PROVIDERS,
+  OAUTH_PROVIDERS,
+  THINKING_LEVELS,
+} from "../../../src/shared/provider-catalog";
 import type { ApiFormat } from "../../../src/shared/provider-catalog";
-import type { ProviderStatus } from "../store";
+import type { DiscoveryState, ProviderStatus } from "../store";
 import { Icon } from "./Icons";
 
 export interface ProvidersSheetProps {
@@ -11,6 +16,7 @@ export interface ProvidersSheetProps {
   readonly oauthAvailable: boolean;
   readonly status: ProviderStatus | null;
   readonly oauthMessage: string | null;
+  readonly discovered: DiscoveryState | null;
   readonly onClose: () => void;
   readonly onAddApiKey: (provider: string, key: string, baseUrl?: string) => void;
   readonly onAddCustom: (input: {
@@ -21,6 +27,9 @@ export interface ProvidersSheetProps {
     readonly models: readonly string[];
   }) => void;
   readonly onRemove: (provider: string) => void;
+  readonly onDetect: (provider: string) => void;
+  readonly onSetReasoning: (provider: string, modelId: string, reasoning: boolean) => void;
+  readonly onSetThinking: (provider: string, modelId: string, level: string) => void;
   readonly onOAuthLogin: (provider: string) => void;
   readonly onOAuthCancel: () => void;
 }
@@ -38,7 +47,6 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
   const [tab, setTab] = useState<Tab>("key");
 
   const [provider, setProvider] = useState(KNOWN_PROVIDERS[0]?.id ?? "openai");
-  const [customProvider, setCustomProvider] = useState("");
   const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
@@ -48,12 +56,20 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
   const [newKey, setNewKey] = useState("");
   const [newModels, setNewModels] = useState("");
 
-  const isCustomTarget = provider === "__custom__";
-  const targetId = isCustomTarget ? customProvider.trim() : provider;
+  // Optimistic per-model edits while the host persists them.
+  const [reasoningDraft, setReasoningDraft] = useState<Record<string, boolean>>({});
+  const [levelDraft, setLevelDraft] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setReasoningDraft({});
+    setLevelDraft({});
+  }, [props.discovered]);
+
+  const discovered = props.discovered;
+  const reasoningCount = discovered?.models.filter((model) => model.reasoning).length ?? 0;
 
   const saveApiKey = (): void => {
-    if (targetId.length === 0 || key.trim().length === 0) return;
-    props.onAddApiKey(targetId, key.trim(), baseUrl.trim().length > 0 ? baseUrl.trim() : undefined);
+    if (provider.length === 0 || key.trim().length === 0) return;
+    props.onAddApiKey(provider, key.trim(), baseUrl.trim().length > 0 ? baseUrl.trim() : undefined);
     setKey("");
   };
 
@@ -115,6 +131,91 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
             {props.oauthMessage !== null && <div className="oauth-message">{props.oauthMessage}</div>}
           </section>
         )}
+
+        <section className="sheet-section">
+          <div className="sheet-section-title">
+            Detected models
+            {discovered !== null && (
+              <button
+                type="button"
+                className="link-btn"
+                disabled={busy}
+                onClick={() => props.onDetect(discovered.provider)}
+              >
+                Re-detect
+              </button>
+            )}
+          </div>
+          {discovered === null && (
+            <div className="popover-empty">
+              Save an API key and every model the credential can use is detected automatically.
+            </div>
+          )}
+          {discovered !== null && discovered.models.length === 0 && (
+            <div className="popover-empty">
+              {discovered.source === "none"
+                ? `No models detected for ${discovered.provider}.`
+                : `${discovered.provider}: no models.`}
+            </div>
+          )}
+          {discovered !== null && discovered.models.length > 0 && (
+            <div className="detected-list">
+              <div className="detected-summary">
+                <code>{discovered.provider}</code>
+                <span className="provider-source">{discovered.source}</span>
+                <span className="provider-source">
+                  {discovered.models.length} model{discovered.models.length === 1 ? "" : "s"}
+                  {reasoningCount > 0 ? ` · ${reasoningCount} reasoning` : ""}
+                </span>
+              </div>
+              {discovered.models.map((model) => {
+                const key = `${discovered.provider}/${model.id}`;
+                const reasoning = reasoningDraft[key] ?? model.reasoning;
+                const level = levelDraft[key] ?? model.thinkingLevel;
+                return (
+                  <div key={key} className="detected-row">
+                    <div className="detected-head">
+                      <span className="detected-id" title={model.id}>
+                        {model.name ?? model.id}
+                      </span>
+                      <label className="detected-toggle" title="Reasoning model">
+                        <input
+                          type="checkbox"
+                          checked={reasoning}
+                          onChange={(event) => {
+                            const next = event.target.checked;
+                            setReasoningDraft((current) => ({ ...current, [key]: next }));
+                            props.onSetReasoning(discovered.provider, model.id, next);
+                          }}
+                        />
+                        reasoning
+                      </label>
+                    </div>
+                    {reasoning && (
+                      <label className="detected-depth">
+                        <span>depth</span>
+                        <select
+                          value={level}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setLevelDraft((current) => ({ ...current, [key]: next }));
+                            props.onSetThinking(discovered.provider, model.id, next);
+                          }}
+                        >
+                          {THINKING_LEVELS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         <section className="sheet-section">
           <div className="sheet-section-title">Configured</div>
@@ -193,19 +294,8 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
                       {entry.label}
                     </option>
                   ))}
-                  <option value="__custom__">Custom provider id…</option>
                 </select>
               </label>
-              {isCustomTarget && (
-                <label className="field">
-                  <span>Provider id</span>
-                  <input
-                    value={customProvider}
-                    placeholder="my-gateway"
-                    onChange={(event) => setCustomProvider(event.target.value)}
-                  />
-                </label>
-              )}
               <label className="field">
                 <span>API key</span>
                 <input
@@ -227,7 +317,7 @@ export function ProvidersSheet(props: ProvidersSheetProps): JSX.Element {
                 <button
                   type="submit"
                   className="btn primary"
-                  disabled={busy || targetId.length === 0 || key.trim().length === 0}
+                  disabled={busy || key.trim().length === 0}
                 >
                   Save &amp; verify
                 </button>

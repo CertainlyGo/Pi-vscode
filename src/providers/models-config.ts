@@ -26,6 +26,20 @@ export interface ModelProviderConfig {
   readonly models: readonly string[];
 }
 
+/** One model entry as stored in `models.json`. */
+export interface ModelEntry {
+  readonly id: string;
+  readonly name?: string;
+  readonly reasoning?: boolean;
+}
+
+/** Input for auto-discovery: reasoning is only ever upgraded to `true`. */
+export interface DiscoveredModelInput {
+  readonly id: string;
+  readonly name?: string;
+  readonly reasoning?: boolean;
+}
+
 export function getModelsPath(agentDir: string): string {
   return join(agentDir, "models.json");
 }
@@ -134,6 +148,151 @@ export async function removeProvider(path: string, provider: string): Promise<vo
     if (id !== provider) rest[id] = entry;
   }
   await writeModelsConfig(path, { ...config, providers: rest });
+}
+
+/**
+ * Merge auto-discovered models into a provider entry.
+ *
+ * Existing entries are preserved field-by-field — pi may already know a model's
+ * context window, cost or thinking map — and `reasoning` is only ever upgraded
+ * to `true`, never downgraded, so a heuristic miss cannot disable thinking for
+ * a model pi's catalog considers a reasoning model.
+ */
+export async function setDiscoveredModels(
+  path: string,
+  provider: string,
+  models: readonly DiscoveredModelInput[],
+  options: { readonly baseUrl?: string; readonly api?: ApiFormat } = {},
+): Promise<number> {
+  if (models.length === 0) return 0;
+  const config = await readModelsConfig(path);
+  const providers = providersOf(config);
+  const entry = objectOf(providers[provider]);
+  const existingModels = Array.isArray(entry["models"]) ? (entry["models"] as unknown[]) : [];
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const model of existingModels) {
+    const record = objectOf(model);
+    const id = typeof record["id"] === "string" ? record["id"] : undefined;
+    if (id !== undefined) byId.set(id, record);
+  }
+
+  let added = 0;
+  for (const model of models) {
+    const existing = byId.get(model.id);
+    if (existing === undefined) {
+      byId.set(model.id, {
+        id: model.id,
+        ...(model.name !== undefined && model.name !== model.id ? { name: model.name } : {}),
+        ...(model.reasoning === true ? { reasoning: true } : {}),
+      });
+      added += 1;
+      continue;
+    }
+    if (model.reasoning === true && existing["reasoning"] !== true) {
+      byId.set(model.id, { ...existing, reasoning: true });
+    }
+  }
+
+  await writeModelsConfig(path, {
+    ...config,
+    providers: {
+      ...providers,
+      [provider]: {
+        ...entry,
+        ...(options.baseUrl !== undefined && options.baseUrl.trim().length > 0
+          ? { baseUrl: options.baseUrl.trim() }
+          : {}),
+        ...(options.api !== undefined ? { api: options.api } : {}),
+        models: [...byId.values()],
+      },
+    },
+  });
+  return added;
+}
+
+/** Explicitly set a model's reasoning flag (user action, may set `false`). */
+export async function setModelReasoning(
+  path: string,
+  provider: string,
+  modelId: string,
+  reasoning: boolean,
+): Promise<void> {
+  const config = await readModelsConfig(path);
+  const providers = providersOf(config);
+  const entry = objectOf(providers[provider]);
+  const existingModels = Array.isArray(entry["models"]) ? (entry["models"] as unknown[]) : [];
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const model of existingModels) {
+    const record = objectOf(model);
+    const id = typeof record["id"] === "string" ? record["id"] : undefined;
+    if (id !== undefined) byId.set(id, record);
+  }
+  const existing = byId.get(modelId) ?? { id: modelId };
+  byId.set(modelId, { ...existing, reasoning });
+  await writeModelsConfig(path, {
+    ...config,
+    providers: {
+      ...providers,
+      [provider]: { ...entry, models: [...byId.values()] },
+    },
+  });
+}
+
+/**
+ * Override a built-in model's reasoning flag without touching the provider's
+ * model list. pi applies `modelOverrides` on top of catalog/extension models,
+ * so this cannot shadow the rest of the provider's catalog.
+ */
+export async function setModelOverrideReasoning(
+  path: string,
+  provider: string,
+  modelId: string,
+  reasoning: boolean,
+): Promise<void> {
+  const config = await readModelsConfig(path);
+  const providers = providersOf(config);
+  const entry = objectOf(providers[provider]);
+  const rawOverrides = entry["modelOverrides"];
+  const overrides =
+    rawOverrides !== null && typeof rawOverrides === "object" && !Array.isArray(rawOverrides)
+      ? (rawOverrides as Record<string, unknown>)
+      : {};
+  const existing = objectOf(overrides[modelId]);
+  await writeModelsConfig(path, {
+    ...config,
+    providers: {
+      ...providers,
+      [provider]: { ...entry, modelOverrides: { ...overrides, [modelId]: { ...existing, reasoning } } },
+    },
+  });
+}
+
+/** Read the model entries (id/name/reasoning) declared for a provider. */
+export async function listModelEntries(path: string, provider: string): Promise<ModelEntry[]> {
+  let config: Record<string, unknown>;
+  try {
+    config = await readModelsConfig(path);
+  } catch {
+    return [];
+  }
+  const entry = objectOf(providersOf(config)[provider]);
+  if (!Array.isArray(entry["models"])) return [];
+  const result: ModelEntry[] = [];
+  for (const value of entry["models"] as unknown[]) {
+    if (typeof value === "string") {
+      result.push({ id: value });
+      continue;
+    }
+    const record = objectOf(value);
+    const id = typeof record["id"] === "string" ? record["id"] : undefined;
+    if (id === undefined) continue;
+    result.push({
+      id,
+      ...(typeof record["name"] === "string" ? { name: record["name"] } : {}),
+      ...(typeof record["reasoning"] === "boolean" ? { reasoning: record["reasoning"] } : {}),
+    });
+  }
+  return result;
 }
 
 /** Summarize providers declared in models.json for the UI. */

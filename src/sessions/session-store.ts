@@ -2,6 +2,7 @@ import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import type { SessionSummary } from "../shared/protocol";
+import { firstLine } from "../shared/text";
 
 const HEAD_SCAN_LINES = 200;
 const NAME_LIMIT = 48;
@@ -39,8 +40,8 @@ function contentText(value: unknown): string {
 }
 
 function truncate(text: string, limit: number): string {
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-  return firstLine.length > limit ? `${firstLine.slice(0, limit)}…` : firstLine;
+  const line = firstLine(text);
+  return line.length > limit ? `${line.slice(0, limit)}…` : line;
 }
 
 function extractMeta(head: readonly string[], fallbackId: string): { id: string; name: string } {
